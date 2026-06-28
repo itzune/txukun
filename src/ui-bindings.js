@@ -73,6 +73,23 @@ export function setProgress(pct) {
   }
 }
 
+// ── Spell Status Indicator ──────────────────────────
+
+export function setSpellStatus(loaded, extra) {
+  const status = document.getElementById('spellStatus');
+  if (!status) return;
+  status.style.display = 'inline';
+  if (loaded) {
+    const count = typeof extra === 'number' ? extra : 0;
+    status.textContent = count > 0 ? `🔍 ${count} hitz` : '✅ zuzen';
+    status.style.color = count > 0 ? 'var(--color-itzune-orange)' : 'var(--color-itzune-green)';
+  } else {
+    const msg = typeof extra === 'string' ? ': ' + extra : '';
+    status.textContent = '❌ hiztegirik gabe' + msg;
+    status.style.color = 'var(--color-itzune-red)';
+  }
+}
+
 // ── Correct Button ──────────────────────────────────
 
 export function setCorrectButtonEnabled(enabled) {

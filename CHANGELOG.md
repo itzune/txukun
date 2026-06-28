@@ -4,7 +4,30 @@ All notable changes to Txukun will be documented in this file.
 
 ---
 
-## [0.1.0] — MVP — 2026-06-28
+## [1.1.0] — Spell checking with frequency-ranked word list — 2026-06-28
+
+### Changed
+
+- **Replaced Hunspell WASM with nspell + pre-built word list** due to Emscripten conflict with ONNX Runtime Web (two WASM modules cannot coexist in the same browser context). See `SPELL_DEBUG_LOG.md` for full history of 6 failed attempts.
+- **160k-word dictionary** (130k base forms from Xuxen .dic + 30k frequent conjugated/declined forms extracted from `ccmatrix_filtered.en-eu.eu` corpus and verified with Hunspell at build time)
+- **Corpus-frequency-ranked suggestions**: Levenshtein distance ≤2 scanning, sorted by edit distance then corpus frequency. Common words ("zer" 83k occurrences) now appear as top suggestions.
+- **Case-insensitive spell checking**: dictionary is lowercase, input is lowercased before lookup
+
+### Added
+
+- `public/dicts/eu-words.txt` — 160k unique Basque words (1.6 MB)
+- `public/dicts/eu-words-freq.txt` — frequency data from Basque parallel corpus (2.0 MB)
+- `SPELL_DEBUG_LOG.md` — full documentation of all spell checker integration attempts
+- Build-time word list generation using `hunspell-asm` in Node.js to verify corpus-extracted forms
+
+### Removed
+
+- `hunspell-asm` and `dictionary-eu` npm dependencies (no longer needed at runtime)
+- Web Worker files (`public/spell-worker.js`, `src/spell-worker.js`)
+
+---
+
+## [1.0.0] — MVP — 2026-06-28
 
 ### Added
 

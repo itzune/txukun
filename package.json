@@ -1,6 +1,6 @@
 {
   "name": "txukun",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Euskarazko testu zuzentzailea — Basque text correction tool",
   "homepage": "https://itzune.eus/txukun/",
@@ -17,7 +17,8 @@
   "dependencies": {
     "@huggingface/transformers": "^3.6.0",
     "dictionary-eu": "^4.0.0",
-    "hunspell-asm": "^4.0.2"
+    "hunspell-asm": "^4.0.2",
+    "nspell": "^2.1.5"
   },
   "devDependencies": {
     "gh-pages": "^6.0.0",

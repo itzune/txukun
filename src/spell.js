@@ -1,74 +1,101 @@
 /**
- * Txukun — Spell checking with Hunspell WASM + Xuxen Basque dictionary
+ * Txukun — Spell checking with pre-built Basque word list
  *
- * Uses hunspell-asm (Hunspell compiled to WebAssembly) with the
- * dictionary-eu (Xuxen) affix + dictionary files.
+ * Uses a 130k-word Set extracted from Xuxen dictionary at build time.
+ * No affix rules — catches hallucinations and obvious typos.
+ * ~1.3MB word list, O(1) lookups via Set.
  */
 
-let spellChecker = null;
+let wordSet = null;
+let wordFreq = null; // Map word → frequency
 
 /**
- * Load the Hunspell spell checker with the Basque dictionary.
- * Dictionary files are ~5 MB (2.7 MB .aff + 2.3 MB .dic).
+ * Load the word list and build a Set.
  */
 export async function loadSpellChecker() {
-  if (spellChecker) return spellChecker;
+  if (wordSet) return;
 
-  // Load Hunspell WASM module (dynamic import)
-  const hunspellFactory = await import('hunspell-asm');
-  const factory = await hunspellFactory.loadModule();
-
-  // Load dictionary files from public/dicts/
-  // These are copied from node_modules/dictionary-eu at build time.
   const basePath = import.meta.env.BASE_URL || '/txukun/';
-  const [affResp, dicResp] = await Promise.all([
-    fetch(basePath + 'dicts/eu.aff'),
-    fetch(basePath + 'dicts/eu.dic'),
+  const [wordsResp, freqResp] = await Promise.all([
+    fetch(basePath + 'dicts/eu-words.txt'),
+    fetch(basePath + 'dicts/eu-words-freq.txt'),
   ]);
 
-  const affBuffer = new Uint8Array(await affResp.arrayBuffer());
-  const dicBuffer = new Uint8Array(await dicResp.arrayBuffer());
+  const text = await wordsResp.text();
+  const freqText = await freqResp.text();
 
-  // Mount dictionary files
-  const affPath = factory.mountBuffer(affBuffer, 'eu.aff');
-  const dicPath = factory.mountBuffer(dicBuffer, 'eu.dic');
+  wordSet = new Set(text.split('\n'));
 
-  spellChecker = factory.create(affPath, dicPath);
-
-  return spellChecker;
+  // Build frequency map (used for sorting suggestions)
+  wordFreq = new Map();
+  for (const line of freqText.split('\n')) {
+    const tab = line.indexOf('\t');
+    if (tab > 0) {
+      wordFreq.set(line.slice(0, tab), parseInt(line.slice(tab + 1), 10) || 0);
+    }
+  }
 }
 
 /**
  * Check if a word is correctly spelled.
  */
 export function spell(word) {
-  if (!spellChecker) return true; // default to OK if not loaded
-  return spellChecker.spell(word);
+  if (!wordSet) return true;
+  if (wordSet.has(word)) return true;
+  // Case-insensitive fallback (dictionary is lowercase)
+  return wordSet.has(word.toLowerCase());
 }
 
 /**
- * Get spelling suggestions for a word.
- * Returns array of suggested words, or empty array if none.
+ * Simple suggestions: Levenshtein distance on words starting with same letter.
  */
 export function suggest(word) {
-  if (!spellChecker) return [];
-  return spellChecker.suggest(word) || [];
+  if (!wordSet) return [];
+  const lower = word.toLowerCase();
+  const candidates = [];
+
+  for (const w of wordSet) {
+    if (w.length < 2) continue;
+    if (w.length < lower.length - 2 || w.length > lower.length + 3) continue;
+
+    const wLower = w.toLowerCase();
+    if (wLower === lower) continue;
+
+    const dist = levenshtein(lower, wLower);
+    if (dist > 2) continue;
+
+    candidates.push({ word: w, dist });
+  }
+
+  candidates.sort((a, b) => a.dist - b.dist || (wordFreq.get(b.word) || 0) - (wordFreq.get(a.word) || 0));
+  return candidates.slice(0, 5).map(c => c.word);
+}
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = new Uint16Array(n + 1);
+  for (let j = 0; j <= n; j++) dp[j] = j;
+  for (let i = 1; i <= m; i++) {
+    let prev = dp[0];
+    dp[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const temp = dp[j];
+      dp[j] = Math.min(
+        dp[j] + 1,
+        dp[j - 1] + 1,
+        prev + (a[i - 1] !== b[j - 1] ? 1 : 0)
+      );
+      prev = temp;
+    }
+  }
+  return dp[n];
 }
 
 /**
  * Basque-aware word tokenizer.
- *
- * Handles:
- * - Apostrophes: d', l', n', t', s', z' (Basque contractions stay attached)
- * - Hyphens in compound words: jaiotze-urtea
- * - Numbers: keep together
- * - URLs/emails: keep together
  */
 const WORD_RE = /[a-zA-ZáéíóúüñÁÉÍÓÚÜÑàèìòùÀÈÌÒÙâêîôûÂÊÎÔÛçÇ'\-]+|\d+(?:[.,]\d+)*|https?:\/\/\S+|[\w.-]+@[\w.-]+/g;
 
-/**
- * Tokenize text into word-like tokens, skipping punctuation, whitespace.
- */
 export function tokenize(text) {
   const tokens = [];
   let match;
@@ -83,32 +110,24 @@ export function tokenize(text) {
 }
 
 /**
- * Check all words in a text against the spell checker.
+ * Check all words in text against the spell checker.
  * Returns array of misspelled tokens with suggestions.
  */
 export function checkSpelling(text) {
-  if (!spellChecker) return [];
+  if (!wordSet) return [];
 
   const tokens = tokenize(text);
   const errors = [];
 
   for (const tok of tokens) {
-    // Skip pure numbers, URLs, emails
     if (/^\d+([.,]\d+)*$/.test(tok.word)) continue;
     if (/^https?:\/\//.test(tok.word)) continue;
     if (/@/.test(tok.word)) continue;
-
-    // Skip words shorter than 2 chars
     if (tok.word.length < 2) continue;
-
-    // Skip ALL-CAPS words (likely acronyms)
     if (tok.word === tok.word.toUpperCase() && tok.word.length > 1) continue;
 
     if (!spell(tok.word)) {
-      errors.push({
-        ...tok,
-        suggestions: suggest(tok.word),
-      });
+      errors.push({ ...tok, suggestions: suggest(tok.word) || [] });
     }
   }
 
@@ -117,53 +136,33 @@ export function checkSpelling(text) {
 
 /**
  * Annotate text with HTML spans for misspelled words.
- * Uses <span class="spell-error"> with data-suggestions for hover/click interaction.
- *
- * Returns HTML string suitable for innerHTML.
  */
 export function annotateSpelling(text, errors) {
   if (!errors || errors.length === 0) return escapeHtml(text);
 
-  // Sort errors by position (already sorted by tokenize, but be safe)
   const sorted = [...errors].sort((a, b) => a.start - b.start);
-
   let html = '';
   let cursor = 0;
 
   for (const err of sorted) {
-    // Text before this error
     html += escapeHtml(text.slice(cursor, err.start));
-
-    // The misspelled word with annotation
     const suggestions = err.suggestions.map(s => escapeHtml(s)).join(',');
     html += `<span class="spell-error" title="${escapeAttr('Zuzenketak / Suggestions: ' + err.suggestions.join(', '))}" data-suggestions="${escapeAttr(suggestions)}" data-word="${escapeAttr(err.word)}">${escapeHtml(err.word)}</span>`;
-
     cursor = err.end;
   }
 
-  // Remaining text
   html += escapeHtml(text.slice(cursor));
-
   return html;
 }
 
-/**
- * Strip HTML annotations to get plain text back.
- */
 export function stripAnnotations(html) {
   const div = document.createElement('div');
   div.innerHTML = html;
   return div.textContent || '';
 }
 
-// ── Helpers ─────────────────────────────────────────
-
 function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function escapeAttr(str) {

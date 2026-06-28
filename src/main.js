@@ -10,6 +10,7 @@ import {
   setCorrectButtonEnabled,
   setModelStatus,
   setProgress,
+  setSpellStatus,
   getInputText,
   setOutputText,
   setOutputTextAnnotated,
@@ -79,10 +80,12 @@ async function loadModel() {
     try {
       await loadSpellChecker();
       spellReady = true;
+      setSpellStatus(true, 0);
       setModelStatus('ready');
     } catch (err) {
       console.warn('Txukun: spell checker failed, continuing without:', String(err));
       spellReady = false;
+      setSpellStatus(false, String(err).slice(0, 40));
       setModelStatus('ready');
     }
   } catch (err) {
@@ -154,6 +157,7 @@ async function correctText() {
     let annotatedOutput = output;
     if (spellReady) {
       const errors = checkSpelling(output);
+      setSpellStatus(true, errors.length);
       if (errors.length > 0) {
         annotatedOutput = annotateSpelling(output, errors);
       }
@@ -228,7 +232,19 @@ async function init() {
 
   // Auto-load model after a short delay (let the page render first)
   setTimeout(() => {
-    loadModel();
+    loadModel().then(() => {
+      // If ?text= param present, fill it in and auto-correct
+      const params = new URLSearchParams(window.location.search);
+      const presetText = params.get('text');
+      if (presetText) {
+        const inputEl = document.getElementById('inputText');
+        if (inputEl) {
+          inputEl.value = presetText;
+          inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+          setTimeout(() => correctText(), 500);
+        }
+      }
+    });
   }, 800);
 
   // Update char count on input
