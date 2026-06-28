@@ -77,18 +77,19 @@ async function loadModel() {
 
     toast(t('toast.modelReady', currentLang), 'success');
 
-    // Load spell checker in background (after model is ready)
+    // Load spell checker (Hunspell WASM worker with Xuxen dictionary)
+    // Runs in parallel with model — worker inits independently
     try {
+      setModelStatus('loading-spell');
       await loadSpellChecker();
       spellReady = true;
       setSpellStatus(true, 0);
-      setModelStatus('ready');
     } catch (err) {
-      console.warn('Txukun: spell checker failed, continuing without:', String(err));
+      console.warn('Txukun: spell checker (Hunspell) failed, falling back:', String(err));
       spellReady = false;
       setSpellStatus(false, String(err).slice(0, 40));
-      setModelStatus('ready');
     }
+    setModelStatus('ready');
   } catch (err) {
     console.error('Failed to load model:', err);
     modelLoading = false;
@@ -120,7 +121,7 @@ async function correctText() {
   // Auto-correct input spelling before sending to model (when enabled)
   let modelInput = input;
   if (spellReady && spellEnabled) {
-    const corrected = autoCorrect(input);
+    const corrected = await autoCorrect(input);
     if (corrected.changes > 0) {
       modelInput = corrected.text;
     }
@@ -168,7 +169,7 @@ async function correctText() {
     let annotatedOutput = output;
     if (spellReady && spellEnabled) {
       // Auto-correct: replace misspelled words with first suggestion
-      const result = autoCorrect(output);
+      const result = await autoCorrect(output);
       finalOutput = result.text;
       setSpellStatus(true, result.changes);
 
@@ -178,7 +179,7 @@ async function correctText() {
       }
 
       // Also annotate remaining errors (words with no suggestions)
-      const remaining = checkSpelling(finalOutput);
+      const remaining = await checkSpelling(finalOutput);
       if (remaining.length > 0) {
         // If there are no corrections yet, start from raw text
         // Otherwise, layer error annotations on top of correction HTML
@@ -194,7 +195,7 @@ async function correctText() {
       }
     } else if (spellReady && !spellEnabled) {
       // Spell checker loaded but disabled: just annotate, don't correct
-      const errors = checkSpelling(output);
+      const errors = await checkSpelling(output);
       if (errors.length > 0) {
         annotatedOutput = annotateSpelling(output, errors);
       }
@@ -273,10 +274,10 @@ async function init() {
   });
 
   // Listen for suggestion click on output panel → re-spell check without model re-inference
-  document.addEventListener('txukun:respell', (e) => {
+  document.addEventListener('txukun:respell', async (e) => {
     if (spellReady && !spellEnabled) {
       const text = e.detail?.text || '';
-      const errors = checkSpelling(text);
+      const errors = await checkSpelling(text);
       if (errors.length > 0) {
         setOutputTextAnnotated(annotateSpelling(text, errors), text);
       } else {

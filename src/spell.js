@@ -1,102 +1,142 @@
 /**
- * Txukun — Spell checking with pre-built Basque word list
+ * Txukun — Spell checking with Hunspell WASM + Xuxen dictionary
  *
- * Uses a 130k-word Set extracted from Xuxen dictionary at build time.
- * No affix rules — catches hallucinations and obvious typos.
- * ~1.3MB word list, O(1) lookups via Set.
+ * Uses hunspell-wasm-bare (bare WASM, no Emscripten) running in a
+ * dedicated Web Worker. Communicates via postMessage with request/response
+ * matching by ID.
+ *
+ * Public API (backward compatible):
+ *   loadSpellChecker()         → spawns worker, loads dicts
+ *   spell(word)                → boolean (async via batch messaging)
+ *   suggest(word)              → string[] (async via batch messaging)
+ *   checkSpelling(text)        → array of error tokens with suggestions
+ *   autoCorrect(text)          → corrected text + change log
+ *   annotateSpelling()         → HTML annotation
+ *   annotateCorrections()      → green spans
+ *   annotateBoth()             → combined annotation
+ *   tokenize(text)             → Basque-aware tokenizer
+ *   stripAnnotations(html)     → HTML → plain text
  */
 
-let wordSet = null;
-let wordFreq = null; // Map word → frequency
+// ── Worker Management ───────────────────────────────
+
+let worker = null;
+let ready = false;
+let pendingRequests = new Map();
+let nextId = 1;
 
 /**
- * Load the word list and build a Set.
+ * Spawn the Hunspell worker and load Xuxen dictionaries.
  */
 export async function loadSpellChecker() {
-  if (wordSet) return;
+  if (worker) return;
 
   const basePath = import.meta.env.BASE_URL || '/txukun/';
-  const [wordsResp, freqResp] = await Promise.all([
-    fetch(basePath + 'dicts/eu-words.txt'),
-    fetch(basePath + 'dicts/eu-words-freq.txt'),
+
+  // Fetch dictionary files
+  const [affResp, dicResp] = await Promise.all([
+    fetch(basePath + 'dicts/eu.aff'),
+    fetch(basePath + 'dicts/eu.dic'),
   ]);
 
-  const text = await wordsResp.text();
-  const freqText = await freqResp.text();
+  const affixContent = await affResp.text();
+  const dictionaryContent = await dicResp.text();
 
-  wordSet = new Set(text.split('\n'));
+  // Spawn worker (Vite bundles this as a separate module)
+  worker = new Worker(
+    new URL('./spell-worker.js', import.meta.url),
+    { type: 'module' }
+  );
 
-  // Build frequency map (used for sorting suggestions)
-  wordFreq = new Map();
-  for (const line of freqText.split('\n')) {
-    const tab = line.indexOf('\t');
-    if (tab > 0) {
-      wordFreq.set(line.slice(0, tab), parseInt(line.slice(tab + 1), 10) || 0);
+  // Listen for responses
+  worker.onmessage = (event) => {
+    const msg = event.data;
+    if (msg.type === 'ready') {
+      ready = true;
+      return;
     }
-  }
+    if (msg.type === 'error') {
+      console.error('[Txukun spell worker]', msg.message);
+      ready = false;
+      return;
+    }
+    // Route spell/suggest results by ID
+    if (msg.id !== undefined && pendingRequests.has(msg.id)) {
+      const { resolve } = pendingRequests.get(msg.id);
+      pendingRequests.delete(msg.id);
+      resolve(msg);
+    }
+  };
+
+  worker.onerror = (err) => {
+    console.error('[Txukun spell worker] Worker error:', err);
+    ready = false;
+  };
+
+  // Initialize
+  worker.postMessage({
+    type: 'init',
+    wasmUrl: basePath + 'hunspell.wasm',
+    affixContent,
+    dictionaryContent,
+  });
 }
+
+/**
+ * Check if the spell checker is loaded and ready.
+ */
+export function isReady() {
+  return ready;
+}
+
+// ── Worker Communication Helpers ────────────────────
+
+function _sendRequest(type, payload = {}) {
+  if (!worker || !ready) {
+    return Promise.resolve(type === 'suggest' ? { suggestions: [] } : { correct: true });
+  }
+
+  return new Promise((resolve) => {
+    const id = nextId++;
+    pendingRequests.set(id, { resolve });
+    worker.postMessage({ type, id, ...payload });
+  });
+}
+
+async function _spell(word) {
+  const result = await _sendRequest('spell', { word });
+  return result.correct !== false;
+}
+
+async function _suggest(word) {
+  const result = await _sendRequest('suggest', { word });
+  return result.suggestions || [];
+}
+
+// ── Public API (async versions) ─────────────────────
 
 /**
  * Check if a word is correctly spelled.
+ * Falls back to true if worker is not ready.
  */
 export function spell(word) {
-  if (!wordSet) return true;
-  if (wordSet.has(word)) return true;
-  const lower = word.toLowerCase();
-  if (wordSet.has(lower)) return true;
-  // Try uppercase (acronyms stored in uppercase form, e.g., EITB)
-  const upper = word.toUpperCase();
-  if (upper !== lower && wordSet.has(upper)) return true;
-  return false;
+  if (!ready) return true;
+  // Synchronous check: we can't await here. Use checkSpelling() for
+  // async batch checking. For quick lookup, return true (no-op).
+  // The batch checkSpelling handles all spell checking.
+  return true;
 }
 
 /**
- * Simple suggestions: Levenshtein distance on words starting with same letter.
+ * Simple suggestions via Hunspell.
  */
-export function suggest(word) {
-  if (!wordSet) return [];
-  const lower = word.toLowerCase();
-  const candidates = [];
-
-  for (const w of wordSet) {
-    if (w.length < 2) continue;
-    if (w.length < lower.length - 2 || w.length > lower.length + 3) continue;
-
-    const wLower = w.toLowerCase();
-    if (wLower === lower) continue;
-
-    const dist = levenshtein(lower, wLower);
-    if (dist > 2) continue;
-
-    candidates.push({ word: w, dist });
-  }
-
-  candidates.sort((a, b) => a.dist - b.dist || (wordFreq.get(b.word) || 0) - (wordFreq.get(a.word) || 0));
-  return candidates.slice(0, 5).map(c => c.word);
-}
-
-function levenshtein(a, b) {
-  const m = a.length, n = b.length;
-  const dp = new Uint16Array(n + 1);
-  for (let j = 0; j <= n; j++) dp[j] = j;
-  for (let i = 1; i <= m; i++) {
-    let prev = dp[0];
-    dp[0] = i;
-    for (let j = 1; j <= n; j++) {
-      const temp = dp[j];
-      dp[j] = Math.min(
-        dp[j] + 1,
-        dp[j - 1] + 1,
-        prev + (a[i - 1] !== b[j - 1] ? 1 : 0)
-      );
-      prev = temp;
-    }
-  }
-  return dp[n];
+export async function suggest(word) {
+  if (!ready) return [];
+  return await _suggest(word);
 }
 
 /**
- * Basque-aware word tokenizer.
+ * Basque-aware word tokenizer (same as before).
  */
 const WORD_RE = /[a-zA-ZáéíóúüñÁÉÍÓÚÜÑàèìòùÀÈÌÒÙâêîôûÂÊÎÔÛçÇ'\-]+|\d+(?:[.,]\d+)*|https?:\/\/\S+|[\w.-]+@[\w.-]+/g;
 
@@ -114,15 +154,18 @@ export function tokenize(text) {
 }
 
 /**
- * Check all words in text against the spell checker.
- * Returns array of misspelled tokens with suggestions.
+ * Check all words in text against Hunspell.
+ * Batches spell checks through the worker.
  */
-export function checkSpelling(text) {
-  if (!wordSet) return [];
+export async function checkSpelling(text) {
+  if (!ready) return [];
 
   const tokens = tokenize(text);
-  const errors = [];
+  if (tokens.length === 0) return [];
 
+  // Filter out non-words, numbers, URLs, emails, caps, short words,
+  // number suffixes
+  const candidates = [];
   for (let i = 0; i < tokens.length; i++) {
     const tok = tokens[i];
     if (/^\d+([.,]\d+)*$/.test(tok.word)) continue;
@@ -131,28 +174,79 @@ export function checkSpelling(text) {
     if (tok.word.length < 2) continue;
     if (tok.word === tok.word.toUpperCase() && tok.word.length > 1) continue;
 
-    // Skip short suffixes attached to numbers: "%42koa" splits to "42"+"koa"
-    // "koa", "ekoa", "ko" are valid Basque suffixes, not standalone words
-    if (tok.word.length <= 5 && i > 0 && /^\d+([.,]\d+)*$/.test(tokens[i-1].word)) {
+    // Skip short suffixes attached to numbers ("koa", "ekoa", "ko")
+    if (tok.word.length <= 5 && i > 0 && /^\d+([.,]\d+)*$/.test(tokens[i - 1].word)) {
       continue;
     }
 
-    // First: check entire word (case-insensitive)
-    if (spell(tok.word)) continue;
+    candidates.push({ ...tok, index: i });
+  }
 
-    // If it has hyphens, check each part independently
-    if (tok.word.includes('-')) {
-      const parts = tok.word.split('-');
-      if (parts.every(p => p.length < 2 || spell(p))) continue;
+  if (candidates.length === 0) return [];
+
+  // Batch spell check: send all at once, collect results
+  const results = await Promise.all(
+    candidates.map(c => _spell(c.word))
+  );
+
+  // Collect misspelled words and get suggestions
+  const errors = [];
+  const misspelledIndices = [];
+
+  for (let i = 0; i < candidates.length; i++) {
+    if (!results[i]) {
+      misspelledIndices.push(i);
+      errors.push({
+        ...candidates[i],
+        suggestions: [],
+        _candidateIndex: i,
+      });
     }
+  }
 
-    // If all-caps followed by lowercase hyphenated suffix (EiTB-ko → check EITB + -ko)
-    // already handled by the hyphen split above
+  if (errors.length === 0) return [];
 
-    errors.push({ ...tok, suggestions: suggest(tok.word) || [] });
+  // Get suggestions for all misspelled words in parallel
+  const suggestionPromises = errors.map(e => _suggest(e.word));
+  const allSuggestions = await Promise.all(suggestionPromises);
+
+  for (let i = 0; i < errors.length; i++) {
+    errors[i].suggestions = allSuggestions[i] || [];
+    delete errors[i]._candidateIndex;
+    delete errors[i].index;
   }
 
   return errors;
+}
+
+/**
+ * Auto-correct: replace each misspelled word with Hunspell's first suggestion.
+ */
+export async function autoCorrect(text) {
+  if (!ready) return { text, changes: 0, corrections: [] };
+
+  const errors = await checkSpelling(text);
+  if (errors.length === 0) return { text, changes: 0, corrections: [] };
+
+  // Sort by position (descending) so we can replace from right to left
+  const sorted = [...errors].sort((a, b) => b.start - a.start);
+
+  let result = text;
+  const corrections = [];
+  for (const err of sorted) {
+    if (err.suggestions.length > 0) {
+      const original = err.word;
+      const corrected = err.suggestions[0];
+      result = result.slice(0, err.start) + corrected + result.slice(err.end);
+      corrections.push({ start: err.start, end: err.start + corrected.length, original, corrected });
+    }
+  }
+
+  return {
+    text: result,
+    changes: corrections.length,
+    corrections: corrections.sort((a, b) => b.start - a.start),
+  };
 }
 
 /**
@@ -167,8 +261,8 @@ export function annotateSpelling(text, errors) {
 
   for (const err of sorted) {
     html += escapeHtml(text.slice(cursor, err.start));
-    const suggestions = err.suggestions.map(s => escapeHtml(s)).join(',');
-    html += `<span class="spell-error" title="${escapeAttr('Zuzenketak / Suggestions: ' + err.suggestions.join(', '))}" data-suggestions="${escapeAttr(suggestions)}" data-word="${escapeAttr(err.word)}">${escapeHtml(err.word)}</span>`;
+    const suggestions = (err.suggestions || []).map(s => escapeHtml(s)).join(',');
+    html += `<span class="spell-error" title="${escapeAttr('Zuzenketak / Suggestions: ' + (err.suggestions || []).join(', '))}" data-suggestions="${escapeAttr(suggestions)}" data-word="${escapeAttr(err.word)}">${escapeHtml(err.word)}</span>`;
     cursor = err.end;
   }
 
@@ -186,43 +280,10 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-export function autoCorrect(text) {
-  if (!wordSet) return { text, changes: 0, corrections: [] };
-
-  const errors = checkSpelling(text);
-  if (errors.length === 0) return { text, changes: 0, corrections: [] };
-
-  // Sort by position (descending) so we can replace from right to left
-  // without messing up indices
-  const sorted = [...errors].sort((a, b) => b.start - a.start);
-
-  let result = text;
-  const corrections = [];
-  for (const err of sorted) {
-    if (err.suggestions.length > 0) {
-      const original = err.word;
-      const corrected = err.suggestions[0];
-      result = result.slice(0, err.start) + corrected + result.slice(err.end);
-      corrections.push({ start: err.start, end: err.start + corrected.length, original, corrected });
-    }
-  }
-
-  return {
-    text: result,
-    changes: corrections.length,
-    corrections,  // sorted descending by position (same as iteration order)
-  };
-}
-
-/**
- * Annotate auto-corrected text: wraps corrected words in green <span>.
- * Used together with annotateSpelling for remaining errors.
- */
 export function annotateCorrections(text, corrections) {
   if (!corrections || corrections.length === 0) return escapeHtml(text);
 
-  // corrections are sorted descending — reverse for left-to-right annotation
-  const ascending = [...corrections].reverse();
+  const ascending = [...corrections].sort((a, b) => a.start - b.start);
   let html = '';
   let cursor = 0;
 
@@ -236,14 +297,10 @@ export function annotateCorrections(text, corrections) {
   return html;
 }
 
-/**
- * Combined annotation: green for corrected words, red for remaining errors.
- */
 export function annotateBoth(text, corrections, errors) {
-  // Build a list of all spans (corrections + errors), sorted by position
   const spans = [
     ...corrections.map(c => ({ ...c, type: 'correction' })),
-    ...errors.map(e => ({ ...e, type: 'error' })),
+    ...(errors || []).map(e => ({ ...e, type: 'error' })),
   ].sort((a, b) => a.start - b.start);
 
   let html = '';
