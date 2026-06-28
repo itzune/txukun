@@ -42,8 +42,12 @@ export async function loadSpellChecker() {
 export function spell(word) {
   if (!wordSet) return true;
   if (wordSet.has(word)) return true;
-  // Case-insensitive fallback (dictionary is lowercase)
-  return wordSet.has(word.toLowerCase());
+  const lower = word.toLowerCase();
+  const upper = word.toUpperCase();
+  // Try lowercase first, then uppercase (acronyms are stored as uppercase)
+  if (wordSet.has(lower)) return true;
+  if (wordSet.has(upper)) return true;
+  return false;
 }
 
 /**
@@ -126,9 +130,19 @@ export function checkSpelling(text) {
     if (tok.word.length < 2) continue;
     if (tok.word === tok.word.toUpperCase() && tok.word.length > 1) continue;
 
-    if (!spell(tok.word)) {
-      errors.push({ ...tok, suggestions: suggest(tok.word) || [] });
+    // First: check entire word (case-insensitive)
+    if (spell(tok.word)) continue;
+
+    // If it has hyphens, check each part independently
+    if (tok.word.includes('-')) {
+      const parts = tok.word.split('-');
+      if (parts.every(p => p.length < 2 || spell(p))) continue;
     }
+
+    // If all-caps followed by lowercase hyphenated suffix (EiTB-ko → check EITB + -ko)
+    // already handled by the hyphen split above
+
+    errors.push({ ...tok, suggestions: suggest(tok.word) || [] });
   }
 
   return errors;
