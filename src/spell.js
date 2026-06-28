@@ -210,6 +210,7 @@ export async function checkSpelling(text) {
   if (errors.length === 0) return [];
 
   // Get suggestions for all misspelled words in parallel
+  console.log('[Txukun] checkSpelling: fetching suggestions for', errors.length, 'words:', errors.map(e => e.word));
   const suggestionPromises = errors.map(e => _suggest(e.word));
   const allSuggestions = await Promise.all(suggestionPromises);
 
@@ -226,10 +227,14 @@ export async function checkSpelling(text) {
  * Auto-correct: replace each misspelled word with Hunspell's first suggestion.
  */
 export async function autoCorrect(text) {
-  if (!ready) return { text, changes: 0, corrections: [] };
+  console.log('[Txukun] autoCorrect called with:', text.substring(0, 80));
+  if (!ready) { console.log('[Txukun] autoCorrect: not ready'); return { text, changes: 0, corrections: [] };
+ }
 
   const errors = await checkSpelling(text);
-  if (errors.length === 0) return { text, changes: 0, corrections: [] };
+  console.log('[Txukun] autoCorrect: errors found:', errors.length, errors.map(e => e.word));
+  if (errors.length === 0) { console.log('[Txukun] autoCorrect: no errors'); return { text, changes: 0, corrections: [] };
+ }
 
   // Sort by position (descending) so we can replace from right to left
   const sorted = [...errors].sort((a, b) => b.start - a.start);
