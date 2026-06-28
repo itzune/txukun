@@ -4,6 +4,17 @@ All notable changes to Txukun will be documented in this file.
 
 ---
 
+## [1.4.0] — Auto-correct on by default — 2026-06-28
+
+### Changed
+- **Auto-zuzenketa toggle now actually auto-corrects**: when enabled, misspelled words are automatically replaced with the first suggestion (output AND input)
+- When disabled, errors are only annotated (red underline) — no auto-replacement
+- Input auto-correction runs silently: textarea updates with corrected text, remaining errors annotated
+- Added `spell.autoCorrect()` function: replaces fixable errors in-place, returns `{ text, changes }`
+- Updated spell toggle tooltip to clarify: "Aktibatuta, akats ortografikoak automatikoki zuzentzen dira..."
+
+---
+
 ## [1.3.0] — Auto-correct toggle + info tooltip — 2026-06-28
 
 ### Changed

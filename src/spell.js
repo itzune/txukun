@@ -165,6 +165,26 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+export function autoCorrect(text) {
+  if (!wordSet) return { text, changes: 0 };
+
+  const errors = checkSpelling(text);
+  if (errors.length === 0) return { text, changes: 0 };
+
+  // Sort by position (descending) so we can replace from right to left
+  // without messing up indices
+  const sorted = [...errors].sort((a, b) => b.start - a.start);
+
+  let result = text;
+  for (const err of sorted) {
+    if (err.suggestions.length > 0) {
+      result = result.slice(0, err.start) + err.suggestions[0] + result.slice(err.end);
+    }
+  }
+
+  return { text: result, changes: sorted.filter(e => e.suggestions.length > 0).length };
+}
+
 function escapeAttr(str) {
   return String(str).replace(/"/g, '&quot;');
 }

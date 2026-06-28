@@ -67,7 +67,7 @@ export const i18n = {
     },
     spell: {
       toggle: 'Auto-zuzenketa',
-      toggleHint: 'Akats ortografikoak automatikoki zuzentzen dira lehen iradokizunarekin. Desaktibatuta, soilik azpimarratuko dira.',
+      toggleHint: 'Aktibatuta, akats ortografikoak automatikoki zuzentzen dira lehen iradokizunarekin. Desaktibatuta, soilik azpimarratuko dira.',
       suggestions: 'Zuzenketak',
       ignore: 'Alde batera utzi',
     },
