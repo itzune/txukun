@@ -4,6 +4,25 @@ All notable changes to Txukun will be documented in this file.
 
 ---
 
+## [1.5.0] — Spell checker improvements + disclaimers — 2026-06-28
+
+### Added
+- **Hyphen-split spell checking**: compound words like `EiTB-ko`, `hitz-armak`, `etxe-aurrean` now validated by checking each part independently
+- **Number-suffix skip**: short words (≤5 chars) following a numeric token are treated as Basque suffixes (`42koa`, `15ekoa`, `42ko`) and not flagged
+- **Case-insensitive acronym lookup**: `eitb` finds `EITB`, `EiTB` finds `EITB` via uppercase fallback
+- **Disclaimer section** in "Nola dabil?": warns about model hallucinations (inherent to all generative AI) and clarifies auto-correct uses static dictionary + Levenshtein, not AI/LLM
+- **Green + red combined annotations**: auto-corrected words in green, remaining errors in red
+- **Clickable corrected words**: clicking a green-underlined word shows popover to undo the correction
+
+### Fixed
+- Removed `SER` from word list (Spanish false positive)
+- `spell()` case-insensitive lookup now correctly handles mixed-case acronyms without matching false positives
+
+### Removed
+- Pipeline flow diagram (🎤 Audio → Parakeet → Txukun) — not yet implemented
+
+---
+
 ## [1.4.0] — Auto-correct on by default — 2026-06-28
 
 ### Changed
