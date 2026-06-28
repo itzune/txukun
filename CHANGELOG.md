@@ -4,6 +4,17 @@ All notable changes to Txukun will be documented in this file.
 
 ---
 
+## [1.5.1] — Hunspell WASM worker ready fix + green annotation — 2026-06-29
+
+### Fixed
+- **Spell worker race condition**: `loadSpellChecker()` now waits for the Hunspell WASM worker to fully initialize (~3s for Xuxen dict) before returning. Previously, clicking "Correct" too quickly after page load would silently skip all spell corrections because the worker wasn't ready yet.
+- **Green annotation for pre-model corrections**: auto-corrected words (e.g., `gabiltxa` → `gabiltza`) now correctly display green underlines in the output. The pre-model corrections are merged with post-model corrections before annotation.
+
+### Changed
+- Spell checker pipeline now properly sequenced: `loadSpellChecker()` awaits worker `ready` message before resolving, ensuring subsequent `autoCorrect()` calls actually check words instead of no-oping.
+
+---
+
 ## [1.5.0] — Spell checker improvements + disclaimers — 2026-06-28
 
 ### Added
