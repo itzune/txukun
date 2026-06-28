@@ -1,7 +1,9 @@
 # Txukun + Hunspell WASM — Integration Plan
 
 **Date:** 2026-06-28
-**Status:** Integration complete, spell workaround in place
+**Status:** ✅ Integration complete. 🟡 `spell()` uses suggest-based fallback (Hunspell 1.7.3 regression).
+
+> See [ISSUE_LOG.md](./ISSUE_LOG.md) for full diagnostic history.
 
 ## Current Architecture
 
@@ -285,8 +287,23 @@ allowing multiple in-flight requests.
 | Remove unused deps (hunspell-asm, nspell) | 10 min | ⏳ Pending |
 | Browser testing with real Basque text | 2-3 hours | ⏳ Pending |
 | Spell workaround (suggest-based fallback) | 30 min | ✅ Done |
+| NEEDAFFIX stripping in handleInit | 10 min | ✅ Done |
 | Performance comparison vs current word-list | 1 hour | ⏳ Pending |
-| **Total** | **~1.5 days** | ⏳ Core integration complete | |
+| Build Hunspell 1.7.0 to fix spell() | 2-3 hours | ⏳ Pending |
+| **Total** | **~1.5 days** | ✅ Core integration complete |
+
+> Full development log: [ISSUE_LOG.md](./ISSUE_LOG.md)
+
+### Known Issues
+
+1. **hunspell_spell false negatives:** Hunspell 1.7.3 regression — `spell()`
+   rejects all Xuxen words regardless of NEEDAFFIX stripping. `suggest()` works
+   correctly. **Workaround**: suggest-based fallback in `spell-worker.js`.
+   **Plan**: Build Hunspell 1.7.0 with wasi-sdk to confirm fix before shipping.
+
+2. **Memory growth during `hunspell_create`:** The Xuxen dictionary requires
+   memory expansion past the initial 64MB allocation. Our `_alloc` bump
+   allocator starts at 2MB to stay above Hunspell's internal heap.
 
 ## Known Challenges
 

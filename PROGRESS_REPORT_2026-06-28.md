@@ -1,7 +1,9 @@
 # Txukun — Hunspell WASM Integration Progress Report
 
 **Date:** 2026-06-28  
-**Status:** Core integration complete, one blocker remains
+**Status:** ✅ Core integration complete. 🟡 `spell()` uses suggest-based fallback due to Hunspell 1.7.3 regression.
+
+> See [ISSUE_LOG.md](./ISSUE_LOG.md) for full diagnostic history of all 10+ development attempts.
 
 ---
 
@@ -52,72 +54,31 @@ Full Xuxen Basque dictionary:
 
 ---
 
-## 2. Current Blocker: `hunspell_spell` False Negatives
+## 2. `hunspell_spell` False Negatives — Root Cause
 
-### Symptoms
+### Diagnosis (2026-06-28)
 
-`hunspell_spell()` returns `0` (false) for **all** words when the full Xuxen dictionary is loaded, including valid stems like `"etxe"`, `"gizon"`, `"etxea"`.
+**Root cause: Hunspell 1.7.3 `spell()` regression vs. 1.7.0.**
 
-`hunspell_suggest()` works correctly and returns accurate Basque word forms:
-- Input `"etxee"` → suggestions: `etxe`, `etxea`, `etxeen`, …
+Our WASM build is Hunspell 1.7.3 (upstream commit `c83e53f`). System Hunspell is 1.7.0. The `spell()` code path in 1.7.3 rejects every word from the Xuxen dictionary, while `suggest()` (broader mutation loop) works fine. Even completely flagless dict entries like `ñañan` are rejected.
 
-System Hunspell 1.7.0 with the identical dictionary files works correctly (`spell("etxe")` returns true).
+The exact 1.7.0→1.7.3 commit causing this is not yet identified.
 
-### What We've Ruled Out
+**Contributing factor: `NEEDAFFIX 1`** — Xuxen's affix declares `NEEDAFFIX 1` and every dict entry carries flag `1`. Stripping both (NEEDAFFIX line from .aff, trailing `,1` from .dict flags) is done in the worker but doesn't fully resolve the issue — the 1.7.3 regression is deeper.
 
-| Hypothesis | Test | Result |
-|------------|------|--------|
-| File I/O corruption | Tiny 3-word dict works perfectly (`spell("etxe")=true`) | Dict reading is correct |
-| Numeric flag parsing broken | Custom PFX+SFX test dict works (`spell("etxea")=true` with suffix rule) | Flag parsing works |
-| Flag value overflow | Max flag in Xuxen: 1002, `FLAG` is `unsigned short` (max 65535) | No overflow |
-| Affix count mismatch | All 121K SFX rules load, no stderr from Hunspell | Silent parse |
-| Stack overflow during spell | Increased stack to 256KB, no change in spell behavior | Not stack |
-| `chrono::now()` returning 0 | `TIMELIMIT_GLOBAL_MS=250ms`, check is `now()-start > 250ms`. `now()`=0, `start`=0 → 0ms > 250ms = false → continues fine. Tiny dict works. | Not timelimit |
-| Encoding mismatch | `SET UTF-8` in affix, `get_dic_encoding()` returns "UTF-8" | Encoding correct |
-| Memory corruption during init | Tiny dict and full Xuxen both use same `mem()`/`mem8()` pattern | Not JS memory |
+### Workaround (production)
 
-### Remaining Hypotheses (ranked by likelihood)
+`spell-worker.js` uses a two-stage spell check:
+1. `hunspell_spell()` → direct lookup  
+2. If false → `hunspell_suggest()` → if first suggestion matches word, treat as correct
 
-**A) `checkword()` flag lookup fails silently with numeric multi-flag combinations**
+This is correct but slower (~1-2ms per word vs ~0.1ms for direct `spell()`). Acceptable for pause/blur-based checking, not ideal for keystroke-level.
 
-Xuxen uses flag combinations like `etxe/10,1` where `/10,1` means word belongs to flags 10 AND 1. With `FLAG num`, Hunspell parses `10,1` into a `char[CONTSIZE]` bit array. If the `HashMgr::decode_flags()` or flag array indexing has an off-by-one or endianness issue in wasi-libc's compiled code, `checkword()` would fail every lookup while `suggest()` (which uses n-gram similarity, not flag matching) would still work.
+### Path to definitive fix
 
-**Investigation needed:** Add debug logging to `AffixMgr::decode_flags()` and `HashMgr::lookup()` to see which flags are being decoded for `"etxe"` and whether the `m_HMgrs[0]->lookup("etxe")` returns a valid `hentry*`.
-
-**B) `cleanword2()` or `spellsharps()` capitalization handling edge case**
-
-Hunspell's spell pipeline goes: `cleanword2()` → case normalization → `checkword()` → flag check. If `cleanword2()` (which handles capital letters, German sharp s, etc.) modifies the word in a way that mismatches the dictionary stem, `checkword()` would fail.
-
-**Investigation needed:** Test `spell()` with all-caps (`ETXE`), title-case (`Etxe`), and lowercase (`etxe`) to see if capitalization affects the result. (System 1.7.0 handles all correctly.)
-
-**C) `std::chrono::steady_clock` resolution difference between wasi-libc and native libc**
-
-Our shim's `clock_time_get` returns `0n` for all times. The `now()` function is:
-```cpp
-auto now() { return time_point(duration(clock_gettime(...))); }
-```
-With our shim returning 0, `now()` = `time_point(0ms)`. The check `now() - start > 250ms` correctly passes (0 < 250). But in other places, time arithmetic with `time_point::max()` (used as the default `suggest_start`) might overflow in wasi-32 under wasi-libc's chrono implementation.
-
-**Investigation needed:** Check if any `spell_internal()` code path uses `time_point::max()` comparisons differently than `suggest()`.
-
-**D) `WARN` flag or `nosuggest`/`needaffix`/`onlyincompound` flag misconfiguration**
-
-Xuxen affix defines `WARN 0` and various morphological flags. If `WARN` causes words to be silently rejected, or if a `needaffix` flag is accidentally set on the stem, `spell()` would fail even though `suggest()` finds the word.
-
-**Investigation needed:** Check Xuxen affix for `WARN`, `NEEDAFFIX`, `NOSUGGEST`, `ONLYINCOMPOUND` flags and verify they don't affect `"etxe"`.
-
-### Current Workaround
-
-`handleSpell()` in `spell-worker.js` falls back to `suggest()`: if the word's first suggestion is identical (case-insensitive), treat as correct. This covers the most common false negatives but misses edge cases where `suggest()` returns a different but valid form.
-
-### Request for Advice
-
-The senior engineer should advise on:
-
-1. Which hypothesis (A/B/C/D) seems most likely given Hunspell internals experience
-2. Whether a **debug build** of `hunspell.wasm` with `-O0 -g` and console logging would be useful (and how to capture stdout from WASM)
-3. Whether switching to **Hunspell 1.7.0** (the version that works with system hunspell) might resolve the issue — the API is identical, just recompile
-4. If the **suggest-based fallback workaround** is acceptable for production deployment or if we should block on fixing `spell`
+1. Build Hunspell 1.7.0 with wasi-sdk (same raw fd I/O patches, same API) — test if `spell()` works
+2. If yes → ship 1.7.0 binary, remove suggest fallback
+3. If still broken → bisect Hunspell commits between 1.7.0 and 1.7.3 to find the regression
 
 ---
 
@@ -159,10 +120,14 @@ The senior engineer should advise on:
 
 ---
 
-## 5. Next Steps After Blocker Resolution
+## 5. Next Steps
 
-1. Browser testing with real Basque text
-2. Deploy to GitHub Pages (`https://itzune.eus/txukun/`)
-3. Performance comparison vs. current word-list approach
-4. Remove unused deps (`hunspell-asm`, `nspell`, optionally `dictionary-eu`)
+1. Browser testing with real Basque text at `https://itzune.eus/txukun/`
+2. Performance comparison vs. current word-list approach
+3. Build Hunspell 1.7.0 with wasi-sdk to test if `spell()` works
+4. Remove unused deps (`hunspell-asm`, `nspell`)
 5. Bump version to v2.0
+
+---
+
+> Full development log with all 10+ approaches, diagnostic experiments, and technical hurdles: [ISSUE_LOG.md](./ISSUE_LOG.md)
