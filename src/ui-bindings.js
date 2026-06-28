@@ -272,14 +272,12 @@ export function bindSpellSuggestionClicks(container) {
         </div>
       `;
 
-      // Position relative to the span
+      // Position relative to viewport (popover is a child of document.body)
       const rect = span.getBoundingClientRect();
-      const overlay = el('outputSpellOverlay');
-      const overlayRect = overlay?.getBoundingClientRect();
 
-      popover.style.position = 'absolute';
-      popover.style.left = (rect.left - (overlayRect?.left || 0)) + 'px';
-      popover.style.top = (rect.bottom - (overlayRect?.top || 0) + 4) + 'px';
+      popover.style.position = 'fixed';
+      popover.style.left = rect.left + 'px';
+      popover.style.top = (rect.bottom + 4) + 'px';
 
       // Apply replacement on click
       popover.querySelectorAll('.spell-popover__suggestion').forEach(btn => {
@@ -305,10 +303,13 @@ export function bindSpellSuggestionClicks(container) {
       document.body.appendChild(popover);
       activePopover = popover;
 
-      // Check if popover overflows viewport — reposition
+      // Check if popover overflows viewport — reposition above
       const popRect = popover.getBoundingClientRect();
       if (popRect.bottom > window.innerHeight - 10) {
-        popover.style.top = (rect.top - (overlayRect?.top || 0) - popRect.height - 4) + 'px';
+        popover.style.top = (rect.top - popRect.height - 4) + 'px';
+      }
+      if (popRect.right > window.innerWidth - 10) {
+        popover.style.left = (window.innerWidth - popRect.width - 10) + 'px';
       }
     });
   });
