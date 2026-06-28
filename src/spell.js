@@ -166,23 +166,53 @@ function escapeHtml(str) {
 }
 
 export function autoCorrect(text) {
-  if (!wordSet) return { text, changes: 0 };
+  if (!wordSet) return { text, changes: 0, corrections: [] };
 
   const errors = checkSpelling(text);
-  if (errors.length === 0) return { text, changes: 0 };
+  if (errors.length === 0) return { text, changes: 0, corrections: [] };
 
   // Sort by position (descending) so we can replace from right to left
   // without messing up indices
   const sorted = [...errors].sort((a, b) => b.start - a.start);
 
   let result = text;
+  const corrections = [];
   for (const err of sorted) {
     if (err.suggestions.length > 0) {
-      result = result.slice(0, err.start) + err.suggestions[0] + result.slice(err.end);
+      const original = err.word;
+      const corrected = err.suggestions[0];
+      result = result.slice(0, err.start) + corrected + result.slice(err.end);
+      corrections.push({ start: err.start, end: err.start + corrected.length, original, corrected });
     }
   }
 
-  return { text: result, changes: sorted.filter(e => e.suggestions.length > 0).length };
+  return {
+    text: result,
+    changes: corrections.length,
+    corrections,  // sorted descending by position (same as iteration order)
+  };
+}
+
+/**
+ * Annotate auto-corrected text: wraps corrected words in green <span>.
+ * Used together with annotateSpelling for remaining errors.
+ */
+export function annotateCorrections(text, corrections) {
+  if (!corrections || corrections.length === 0) return escapeHtml(text);
+
+  // corrections are sorted descending — reverse for left-to-right annotation
+  const ascending = [...corrections].reverse();
+  let html = '';
+  let cursor = 0;
+
+  for (const c of ascending) {
+    html += escapeHtml(text.slice(cursor, c.start));
+    html += `<span class="spell-corrected" title="${escapeAttr(c.original + ' → ' + c.corrected)}">${escapeHtml(c.corrected)}</span>`;
+    cursor = c.end;
+  }
+
+  html += escapeHtml(text.slice(cursor));
+  return html;
 }
 
 function escapeAttr(str) {

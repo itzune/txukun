@@ -14,7 +14,6 @@ import {
   getInputText,
   setOutputText,
   setOutputTextAnnotated,
-  setInputTextAnnotated,
   bindCopyButton,
   bindDownloadButton,
   bindClearButton,
@@ -22,7 +21,7 @@ import {
   updateCopyDownloadButtons,
 } from './ui-bindings.js';
 import { renderExamples, bindExampleClicks } from './ui-examples.js';
-import { loadSpellChecker, checkSpelling, autoCorrect, annotateSpelling, stripAnnotations } from './spell.js';
+import { loadSpellChecker, checkSpelling, autoCorrect, annotateCorrections, annotateSpelling, stripAnnotations } from './spell.js';
 
 // ── State ──────────────────────────────────────────
 
@@ -164,11 +163,8 @@ async function correctText() {
       finalOutput = result.text;
       setSpellStatus(true, result.changes);
 
-      // Also generate annotations for remaining errors (if any)
-      // but actually, auto-correct already fixed what it can — show remaining as annotations
-      const remaining = checkSpelling(finalOutput);
-      if (remaining.length > 0) {
-        annotatedOutput = annotateSpelling(finalOutput, remaining);
+      if (result.corrections.length > 0) {
+        annotatedOutput = annotateCorrections(finalOutput, result.corrections);
       }
     } else if (spellReady && !spellEnabled) {
       // Spell checker loaded but disabled: just annotate, don't correct
@@ -183,32 +179,6 @@ async function correctText() {
       setOutputTextAnnotated(annotatedOutput, finalOutput);
     }
     updateCopyDownloadButtons(true);
-
-    // Spell-check the input too (annotate if disabled, auto-correct if enabled)
-    if (spellReady) {
-      const inputErrors = checkSpelling(input);
-      if (inputErrors.length > 0) {
-        if (spellEnabled) {
-          // Auto-correct input too — replace errors silently
-          const corrected = autoCorrect(input);
-          const inputEl = document.getElementById('inputText');
-          if (inputEl && corrected.changes > 0) {
-            inputEl.value = corrected.text;
-            inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-          // Also show remaining errors as annotations
-          const remaining = checkSpelling(corrected.text);
-          if (remaining.length > 0) {
-            const annotatedInput = annotateSpelling(corrected.text, remaining);
-            setInputTextAnnotated(annotatedInput, corrected.text);
-          }
-        } else {
-          // Just annotate
-          const annotatedInput = annotateSpelling(input, inputErrors);
-          setInputTextAnnotated(annotatedInput, input);
-        }
-      }
-    }
 
     setModelStatus('ready');
 

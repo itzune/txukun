@@ -795,6 +795,18 @@
       opacity: 0.6;
     }
 
+    .spell-corrected {
+      color: var(--color-itzune-green);
+      text-decoration: underline solid var(--color-itzune-green);
+      text-underline-offset: 3px;
+      font-weight: 500;
+      transition: color 0.15s;
+    }
+    .spell-corrected:hover {
+      color: var(--color-itzune-green);
+      filter: brightness(1.3);
+    }
+
     .spell-popover {
       position: fixed;
       z-index: 300;
