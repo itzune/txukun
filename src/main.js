@@ -117,10 +117,19 @@ async function correctText() {
   setModelStatus('processing');
   setOutputText('...');
 
+  // Auto-correct input spelling before sending to model (when enabled)
+  let modelInput = input;
+  if (spellReady && spellEnabled) {
+    const corrected = autoCorrect(input);
+    if (corrected.changes > 0) {
+      modelInput = corrected.text;
+    }
+  }
+
   try {
     // Process text — the model works on individual sentences
     // Split by newlines, process each line, join back
-    const lines = input.split('\n').filter(line => line.trim());
+    const lines = modelInput.split('\n').filter(line => line.trim());
     const results = [];
 
     for (const line of lines) {
@@ -140,8 +149,8 @@ async function correctText() {
 
     // If there were no lines (empty after trim), handle single case
     if (results.length === 0) {
-      const result = await correctorPipeline(input);
-      let text = result[0]?.translation_text || input;
+      const result = await correctorPipeline(modelInput);
+      let text = result[0]?.translation_text || modelInput;
       text = text
         .replace(/<\/s>/g, '')
         .replace(/<s>/g, '')
