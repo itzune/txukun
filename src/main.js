@@ -77,13 +77,11 @@ async function loadModel() {
 
     // Load spell checker in background (after model is ready)
     try {
-      console.log('Txukun: loading spell checker...');
       await loadSpellChecker();
       spellReady = true;
       setModelStatus('ready');
-      console.log('Txukun: spell checker loaded successfully');
     } catch (err) {
-      console.warn('Txukun: spell checker failed to load, continuing without spelling:', String(err));
+      console.warn('Txukun: spell checker failed, continuing without:', String(err));
       spellReady = false;
       setModelStatus('ready');
     }
@@ -132,6 +130,7 @@ async function correctText() {
         .replace(/<unk>/g, '')
         .replace(/\s{2,}/g, ' ')
         .trim();
+
       results.push(text || line);
     }
 
@@ -155,12 +154,9 @@ async function correctText() {
     let annotatedOutput = output;
     if (spellReady) {
       const errors = checkSpelling(output);
-      console.log('Txukun: spell check found', errors.length, 'errors in', output.split(' ').length, 'words');
       if (errors.length > 0) {
         annotatedOutput = annotateSpelling(output, errors);
       }
-    } else {
-      console.log('Txukun: spell checker not ready, skipping spell check');
     }
 
     setOutputText(output);
