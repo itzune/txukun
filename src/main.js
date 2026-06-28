@@ -43,26 +43,14 @@ async function loadModel() {
 
     setProgress(10);
 
-    // Configure to load ONNX model from local public/ directory
-    env.allowLocalModels = true;
-    env.allowRemoteModels = false;
-    // In Vite, public/ is served at BASE_URL. With base='/txukun/',
-    // files at public/txukun-cap-punct-eu/ are at /txukun/txukun-cap-punct-eu/
-    // So localModelPath = BASE_URL (which is '/txukun/')
-    env.localModelPath = import.meta.env.BASE_URL;
-
-    // Load the model with progress callback
+    // Load the model from HuggingFace Hub
     correctorPipeline = await pipeline(
       'translation',
-      'txukun-cap-punct-eu',  // local model name (matches the subdirectory)
+      'itzune/txukun-cap-punct-eu',  // HF Hub model
       {
         device: 'wasm',
-        dtype: 'fp32',          // use full precision (no _quantized suffix)
-        subfolder: '',           // model files are directly in the model dir, not in onnx/
-        local_files_only: true,
         progress_callback: (info) => {
           if (info.status === 'progress' && info.progress !== undefined) {
-            // Map file download progress from 10% to 90%
             const pct = 10 + Math.round(info.progress * 80);
             setProgress(pct);
           }
