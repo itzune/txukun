@@ -21,7 +21,7 @@ import {
   updateCopyDownloadButtons,
 } from './ui-bindings.js';
 import { renderExamples, bindExampleClicks } from './ui-examples.js';
-import { loadSpellChecker, checkSpelling, autoCorrect, annotateCorrections, annotateSpelling, stripAnnotations } from './spell.js';
+import { loadSpellChecker, checkSpelling, autoCorrect, annotateCorrections, annotateBoth, annotateSpelling, stripAnnotations } from './spell.js';
 
 // ── State ──────────────────────────────────────────
 
@@ -172,8 +172,25 @@ async function correctText() {
       finalOutput = result.text;
       setSpellStatus(true, result.changes);
 
+      // Annotate: green for auto-corrected, red for remaining errors
       if (result.corrections.length > 0) {
         annotatedOutput = annotateCorrections(finalOutput, result.corrections);
+      }
+
+      // Also annotate remaining errors (words with no suggestions)
+      const remaining = checkSpelling(finalOutput);
+      if (remaining.length > 0) {
+        // If there are no corrections yet, start from raw text
+        // Otherwise, layer error annotations on top of correction HTML
+        if (result.corrections.length === 0) {
+          annotatedOutput = annotateSpelling(finalOutput, remaining);
+        } else {
+          // Merge: strip correction HTML, re-annotate with both
+          annotatedOutput = annotateSpelling(finalOutput, remaining);
+          // But now we lost green spans. We need a combined annotation.
+          // For now: annotate both on the plain text
+          annotatedOutput = annotateBoth(finalOutput, result.corrections, remaining);
+        }
       }
     } else if (spellReady && !spellEnabled) {
       // Spell checker loaded but disabled: just annotate, don't correct

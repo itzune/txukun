@@ -215,6 +215,34 @@ export function annotateCorrections(text, corrections) {
   return html;
 }
 
+/**
+ * Combined annotation: green for corrected words, red for remaining errors.
+ */
+export function annotateBoth(text, corrections, errors) {
+  // Build a list of all spans (corrections + errors), sorted by position
+  const spans = [
+    ...corrections.map(c => ({ ...c, type: 'correction' })),
+    ...errors.map(e => ({ ...e, type: 'error' })),
+  ].sort((a, b) => a.start - b.start);
+
+  let html = '';
+  let cursor = 0;
+
+  for (const s of spans) {
+    html += escapeHtml(text.slice(cursor, s.start));
+    if (s.type === 'correction') {
+      html += `<span class="spell-corrected" title="${escapeAttr(s.original + ' → ' + s.corrected)}">${escapeHtml(s.corrected)}</span>`;
+    } else {
+      const suggestions = (s.suggestions || []).map(w => escapeHtml(w)).join(',');
+      html += `<span class="spell-error" title="${escapeAttr('Zuzenketak / Suggestions: ' + (s.suggestions || []).join(', '))}" data-suggestions="${escapeAttr(suggestions)}" data-word="${escapeAttr(s.word)}">${escapeHtml(s.word)}</span>`;
+    }
+    cursor = s.end;
+  }
+
+  html += escapeHtml(text.slice(cursor));
+  return html;
+}
+
 function escapeAttr(str) {
   return String(str).replace(/"/g, '&quot;');
 }

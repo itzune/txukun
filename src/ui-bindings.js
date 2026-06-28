@@ -281,29 +281,42 @@ function hidePopover() {
  * Bind click handlers on spell-error spans to show suggestion popovers.
  */
 export function bindSpellSuggestionClicks(container) {
+  // Click on .spell-error → show suggestions popover
   container.querySelectorAll('.spell-error').forEach(span => {
     span.addEventListener('click', (e) => {
       e.stopPropagation();
-
-      // Hide any existing popover
       hidePopover();
+      showSpellPopover(span, (span.dataset.suggestions || '').split(',').filter(Boolean), span.dataset.word || '');
+    });
+  });
 
-      const suggestions = (span.dataset.suggestions || '').split(',').filter(Boolean);
-      if (suggestions.length === 0) return;
+  // Click on .spell-corrected → show a popover to undo or pick alternative
+  container.querySelectorAll('.spell-corrected').forEach(span => {
+    span.addEventListener('click', (e) => {
+      e.stopPropagation();
+      hidePopover();
+      // Extract original word from title (format: "EiTB → EiTB-ko")
+      const titleParts = (span.title || '').split(' → ');
+      const original = titleParts[0] || '';
+      showSpellPopover(span, [original], span.textContent || '');
+    });
+  });
+}
 
-      const word = span.dataset.word || '';
+function showSpellPopover(span, suggestions, word) {
+  if (suggestions.length === 0) return;
 
-      // Build popover
-      const popover = document.createElement('div');
-      popover.className = 'spell-popover';
-      popover.innerHTML = `
-        <div class="spell-popover__header">
-          <span class="spell-popover__word">${escapeHtml(word)}</span>
-        </div>
-        <div class="spell-popover__suggestions">
-          ${suggestions.map(s => `<button class="spell-popover__suggestion" data-replace="${escapeAttr(s)}">${escapeHtml(s)}</button>`).join('')}
-        </div>
-      `;
+  // Build popover
+  const popover = document.createElement('div');
+  popover.className = 'spell-popover';
+  popover.innerHTML = `
+    <div class="spell-popover__header">
+      <span class="spell-popover__word">${escapeHtml(word)}</span>
+    </div>
+    <div class="spell-popover__suggestions">
+      ${suggestions.map(s => `<button class="spell-popover__suggestion" data-replace="${escapeAttr(s)}">${escapeHtml(s)}</button>`).join('')}
+    </div>
+  `;
 
       // Position relative to viewport (popover is a child of document.body)
       const rect = span.getBoundingClientRect();
@@ -351,19 +364,17 @@ export function bindSpellSuggestionClicks(container) {
         });
       });
 
-      document.body.appendChild(popover);
-      activePopover = popover;
+  document.body.appendChild(popover);
+  activePopover = popover;
 
-      // Check if popover overflows viewport — reposition above
-      const popRect = popover.getBoundingClientRect();
-      if (popRect.bottom > window.innerHeight - 10) {
-        popover.style.top = (rect.top - popRect.height - 4) + 'px';
-      }
-      if (popRect.right > window.innerWidth - 10) {
-        popover.style.left = (window.innerWidth - popRect.width - 10) + 'px';
-      }
-    });
-  });
+  // Check if popover overflows viewport — reposition above
+  const popRect = popover.getBoundingClientRect();
+  if (popRect.bottom > window.innerHeight - 10) {
+    popover.style.top = (rect.top - popRect.height - 4) + 'px';
+  }
+  if (popRect.right > window.innerWidth - 10) {
+    popover.style.left = (window.innerWidth - popRect.width - 10) + 'px';
+  }
 }
 
 // Global click handler to hide popover
