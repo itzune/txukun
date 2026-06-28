@@ -670,6 +670,101 @@
     }
 
     /* ══════════════════════════════════════════════
+       SPELL CHECK OVERLAY & POPOVER
+       ══════════════════════════════════════════════ */
+
+    .spell-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      overflow-y: auto;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .spell-overlay__content {
+      font-family: var(--font-mono);
+      font-size: var(--text-body);
+      line-height: 1.75;
+      color: var(--color-ghost-white);
+      padding: var(--sp-20);
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      pointer-events: auto;
+    }
+
+    .spell-error {
+      color: var(--color-itzune-red);
+      text-decoration: wavy underline var(--color-itzune-red);
+      text-underline-offset: 3px;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.15s;
+    }
+    .spell-error:hover {
+      color: var(--color-itzune-orange);
+      text-decoration-color: var(--color-itzune-orange);
+    }
+
+    .spell-fixed {
+      color: var(--color-itzune-green);
+      text-decoration: line-through;
+      opacity: 0.6;
+    }
+
+    .spell-popover {
+      position: absolute;
+      z-index: 300;
+      background: var(--color-steel-navy);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+      min-width: 160px;
+      max-width: 280px;
+      overflow: hidden;
+    }
+
+    .spell-popover__header {
+      padding: var(--sp-8) var(--sp-12);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      background: rgba(6, 5, 29, 0.4);
+    }
+
+    .spell-popover__word {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--color-itzune-red);
+      font-style: italic;
+    }
+
+    .spell-popover__suggestions {
+      padding: var(--sp-4);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .spell-popover__suggestion {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: transparent;
+      border: none;
+      color: var(--color-mist);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: var(--sp-6) var(--sp-12);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      transition: all 0.12s;
+    }
+    .spell-popover__suggestion:hover {
+      background: rgba(75, 184, 232, 0.12);
+      color: var(--color-ghost-white);
+    }
+
+    /* ══════════════════════════════════════════════
        TOAST
        ══════════════════════════════════════════════ */
 
@@ -874,6 +969,9 @@
             placeholder="Emaitza hemen agertuko da..."
             data-i18n-placeholder="output.placeholder"
           ></textarea>
+          <div class="spell-overlay" id="outputSpellOverlay" style="display:none;">
+            <div class="spell-overlay__content" id="outputSpellContent"></div>
+          </div>
           <span class="panel__char-count" id="outputCharCount">0</span>
         </div>
       </div>

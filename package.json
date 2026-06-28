@@ -6,13 +6,18 @@
   "homepage": "https://itzune.eus/txukun/",
   "type": "module",
   "scripts": {
+    "predev": "npm run copy-dicts",
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run copy-dicts && vite build",
+    "postinstall": "npm run copy-dicts",
+    "copy-dicts": "mkdir -p public/dicts && cp node_modules/dictionary-eu/index.aff public/dicts/eu.aff && cp node_modules/dictionary-eu/index.dic public/dicts/eu.dic",
     "preview": "vite preview",
     "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.6.0"
+    "@huggingface/transformers": "^3.6.0",
+    "dictionary-eu": "^4.0.0",
+    "hunspell-asm": "^4.0.2"
   },
   "devDependencies": {
     "gh-pages": "^6.0.0",

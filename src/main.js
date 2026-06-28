@@ -12,6 +12,7 @@ import {
   setProgress,
   getInputText,
   setOutputText,
+  setOutputTextAnnotated,
   bindCopyButton,
   bindDownloadButton,
   bindClearButton,
@@ -19,12 +20,14 @@ import {
   updateCopyDownloadButtons,
 } from './ui-bindings.js';
 import { renderExamples, bindExampleClicks } from './ui-examples.js';
+import { loadSpellChecker, checkSpelling, annotateSpelling, stripAnnotations } from './spell.js';
 
 // ── State ──────────────────────────────────────────
 
 let correctorPipeline = null;
 let modelLoading = false;
 let modelLoaded = false;
+let spellReady = false;
 let currentLang = 'eu';
 
 // ── Model Loading ──────────────────────────────────
@@ -68,10 +71,21 @@ async function loadModel() {
 
     setProgress(100);
     modelLoaded = true;
-    setModelStatus('ready');
-    setCorrectButtonEnabled(true);
+    setModelStatus('loading-spell');
 
     toast(t('toast.modelReady', currentLang), 'success');
+
+    // Load spell checker in background (after model is ready)
+    try {
+      await loadSpellChecker();
+      spellReady = true;
+      setModelStatus('ready');
+      console.log('Spell checker loaded');
+    } catch (err) {
+      console.warn('Spell checker failed to load, continuing without spelling:', err);
+      spellReady = false;
+      setModelStatus('ready');
+    }
   } catch (err) {
     console.error('Failed to load model:', err);
     modelLoading = false;
@@ -135,7 +149,20 @@ async function correctText() {
     }
 
     const output = results.join('\n');
+
+    // Run spell check if available
+    let annotatedOutput = output;
+    if (spellReady) {
+      const errors = checkSpelling(output);
+      if (errors.length > 0) {
+        annotatedOutput = annotateSpelling(output, errors);
+      }
+    }
+
     setOutputText(output);
+    if (annotatedOutput !== output) {
+      setOutputTextAnnotated(annotatedOutput, output);
+    }
     updateCopyDownloadButtons(true);
 
     setModelStatus('ready');

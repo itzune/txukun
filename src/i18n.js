@@ -65,6 +65,10 @@ export const i18n = {
       copied: 'Testua arbelean kopiatu da!',
       downloaded: 'Fitxategia deskargatu da!',
     },
+    spell: {
+      suggestions: 'Zuzenketak',
+      ignore: 'Alde batera utzi',
+    },
   },
   en: {
     nav: {
@@ -127,6 +131,10 @@ export const i18n = {
       correctError: 'Error correcting text',
       copied: 'Text copied to clipboard!',
       downloaded: 'File downloaded!',
+    },
+    spell: {
+      suggestions: 'Suggestions',
+      ignore: 'Ignore',
     },
   },
 };

@@ -29,6 +29,10 @@ export function setModelStatus(status) {
       dot.classList.add('status-dot--loading');
       text.textContent = 'Eredua kargatzen...';
       break;
+    case 'loading-spell':
+      dot.classList.add('status-dot--loading');
+      text.textContent = 'Hiztegia kargatzen...';
+      break;
     case 'ready':
       dot.classList.add('status-dot--ready');
       text.textContent = 'Eredua prest';
@@ -88,6 +92,39 @@ export function setOutputText(text) {
     // Update char count
     const countEl = el('outputCharCount');
     if (countEl) countEl.textContent = text.length;
+  }
+
+  // Hide spell-annotated overlay if visible
+  const overlay = el('outputSpellOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+/**
+ * Show the output with spell-check annotations.
+ * Renders an HTML overlay on top of the textarea.
+ *
+ * @param {string} annotatedHtml - HTML with <span class="spell-error"> tags
+ * @param {string} plainText - the plain text version for the textarea (still used for copy/download)
+ */
+export function setOutputTextAnnotated(annotatedHtml, plainText) {
+  // Set the textarea value to plain text (for copy/download/size)
+  const output = el('outputText');
+  if (output) {
+    output.value = plainText;
+    const countEl = el('outputCharCount');
+    if (countEl) countEl.textContent = plainText.length;
+  }
+
+  // Show the spell-annotated overlay
+  const overlay = el('outputSpellOverlay');
+  if (overlay) {
+    const content = el('outputSpellContent');
+    if (content) {
+      content.innerHTML = annotatedHtml;
+      // Bind click handlers for spell suggestions
+      bindSpellSuggestionClicks(content);
+    }
+    overlay.style.display = 'block';
   }
 }
 
@@ -194,4 +231,98 @@ export function showToast(message, duration = 2500) {
     toast.style.transition = 'all 0.3s ease';
     setTimeout(() => toast.remove(), 300);
   }, duration);
+}
+
+// ── Spell Check Popover ─────────────────────────────
+
+let activePopover = null;
+
+function hidePopover() {
+  if (activePopover) {
+    activePopover.remove();
+    activePopover = null;
+  }
+}
+
+/**
+ * Bind click handlers on spell-error spans to show suggestion popovers.
+ */
+export function bindSpellSuggestionClicks(container) {
+  container.querySelectorAll('.spell-error').forEach(span => {
+    span.addEventListener('click', (e) => {
+      e.stopPropagation();
+
+      // Hide any existing popover
+      hidePopover();
+
+      const suggestions = (span.dataset.suggestions || '').split(',').filter(Boolean);
+      if (suggestions.length === 0) return;
+
+      const word = span.dataset.word || '';
+
+      // Build popover
+      const popover = document.createElement('div');
+      popover.className = 'spell-popover';
+      popover.innerHTML = `
+        <div class="spell-popover__header">
+          <span class="spell-popover__word">${escapeHtml(word)}</span>
+        </div>
+        <div class="spell-popover__suggestions">
+          ${suggestions.map(s => `<button class="spell-popover__suggestion" data-replace="${escapeAttr(s)}">${escapeHtml(s)}</button>`).join('')}
+        </div>
+      `;
+
+      // Position relative to the span
+      const rect = span.getBoundingClientRect();
+      const overlay = el('outputSpellOverlay');
+      const overlayRect = overlay?.getBoundingClientRect();
+
+      popover.style.position = 'absolute';
+      popover.style.left = (rect.left - (overlayRect?.left || 0)) + 'px';
+      popover.style.top = (rect.bottom - (overlayRect?.top || 0) + 4) + 'px';
+
+      // Apply replacement on click
+      popover.querySelectorAll('.spell-popover__suggestion').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const replacement = btn.dataset.replace;
+          span.textContent = replacement;
+          span.classList.remove('spell-error');
+          span.classList.add('spell-fixed');
+          span.title = `"${word}" → "${replacement}"`;
+          hidePopover();
+
+          // Update the plain textarea too
+          const output = el('outputText');
+          if (output) {
+            const overlayContent = el('outputSpellContent');
+            if (overlayContent) {
+              output.value = overlayContent.textContent || '';
+            }
+          }
+        });
+      });
+
+      document.body.appendChild(popover);
+      activePopover = popover;
+
+      // Check if popover overflows viewport — reposition
+      const popRect = popover.getBoundingClientRect();
+      if (popRect.bottom > window.innerHeight - 10) {
+        popover.style.top = (rect.top - (overlayRect?.top || 0) - popRect.height - 4) + 'px';
+      }
+    });
+  });
+}
+
+// Global click handler to hide popover
+document.addEventListener('click', hidePopover);
+
+// ── Helpers ─────────────────────────────────────────
+
+function escapeHtml(str) {
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function escapeAttr(str) {
+  return String(str).replace(/"/g, '&quot;');
 }

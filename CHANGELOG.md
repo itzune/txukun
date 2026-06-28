@@ -9,6 +9,7 @@ All notable changes to Txukun will be documented in this file.
 ### Added
 
 - **Capitalization and punctuation restoration** using `HiTZ/cap-punct-eu` MarianMT model
+- **Spell checking** with Hunspell WASM + Xuxen Basque dictionary (dictionary-eu, 85k words)
 - **Client-side inference** via Transformers.js + ONNX Runtime Web (WASM backend)
 - **Int8 dynamically quantized ONNX model** served from HuggingFace Hub (`itzune/txukun-cap-punct-eu`) — 77 MB total (74% smaller than fp32)
 - **Custom ONNX export pipeline**: encoder + decoder with KV-cache, IR version 8 for browser compatibility
@@ -20,12 +21,13 @@ All notable changes to Txukun will be documented in this file.
 - **Download as `.txt`** button for corrected output
 - **Clear input** button
 - **Character count** indicators for input and output
-- **Status indicator** with animated dot (idle / loading / ready / processing / error)
+- **Status indicator** with animated dot (idle / loading / loading-spell / ready / processing / error)
 - **Progress bar** showing model download progress
 - **Toast notification system** with success / error / warning / info types
 - **Keyboard shortcut**: `Ctrl+Enter` to trigger correction
 - **Ctrl+Enter to correct** hint shown when input has text
 - **Auto-height textareas** that grow with content
+- **Spell check annotations**: misspelled words underlined in red with wavy line, click to see suggestions in a popover, click suggestion to apply
 - **About section** explaining the model, privacy, and the speech-to-text pipeline (Audio → Parakeet-eu ASR → Txukun → Clean text)
 - **Language detection** from saved preference or browser, defaulting to Basque
 - **GitHub Actions deploy workflow**: auto-deploy to GitHub Pages (`itzune.eus/txukun/`)
@@ -45,7 +47,8 @@ All notable changes to Txukun will be documented in this file.
 ### Known Limitations
 
 - Int8 dynamic quantization may have minor accuracy impact vs fp32 (no evaluation done yet)
-- No spell checking or grammar correction (planned for Phase 2)
+- No grammar correction (planned for future Phase 2)
+- Spell checker may flag proper nouns, technical terms, and compound words as errors
 - Only supports single-line and multi-line text; no paragraph-level context window awareness yet
 
 ---
