@@ -47,7 +47,7 @@ export const i18n = {
       title: 'Nola dabil?',
       p1: 'Txukun-ek <a href="https://hitz.eus/" target="_blank" rel="noopener">HiTZ Zentroak</a> (UPV/EHU) garatutako <a href="https://huggingface.co/HiTZ/cap-punct-eu" target="_blank" rel="noopener">cap-punct-eu</a> adimen artifizialeko eredua erabiltzen du. Eredu hau 9.78 milioi euskarazko esaldirekin entrenatu da eta testuaren maiuskulak eta puntuazioa berreskuratzen ditu — adibidez, ahots-ezagutzatik ateratako testu gordina txukuntzeko.',
       p2: 'Den-dena zure nabigatzailean gertatzen da. Zure testua <strong>ez da inoiz zure gailutik ateratzen</strong>. Eredua behin deskargatzen da eta cachean gordetzen da hurrengo bisitetarako.',
-      p3: '⚠️ Ereduak <strong>aluzinazioak</strong> sor ditzake — existitzen ez diren hitzak — bereziki testu labur edo arraroa sartzean. AI eredu sortzaile guztien berezko arazoa da. <strong>Auto-zuzenketa ez da AI bidezkoa</strong>: 160.000 hitzeko hiztegi estatiko bat eta Levenshtein distantzia erabiltzen ditu, ez machine learning edo LLM teknologiak.',
+      p3: '⚠️ Ereduak <strong>aluzinazioak</strong> sor ditzake — existitzen ez diren hitzak — bereziki testu labur edo arraroa sartzean. AI eredu sortzaile guztien berezko arazoa da. <strong>Auto-zuzenketa ez da AI bidezkoa</strong>: Hunspell ortografia-zuzentzailea eta Xuxen euskarazko hiztegia (142.000 sarrera + morfologia arauak) erabiltzen ditu.',
     },
     toast: {
       modelReady: 'Eredua kargatu da! Orain testua zuzendu dezakezu.',
@@ -111,7 +111,7 @@ export const i18n = {
       title: 'How does it work?',
       p1: 'Txukun uses the <a href="https://huggingface.co/HiTZ/cap-punct-eu" target="_blank" rel="noopener">cap-punct-eu</a> AI model developed by <a href="https://hitz.eus/" target="_blank" rel="noopener">HiTZ Zentroa</a> (UPV/EHU). The model was trained on 9.78 million Basque sentences and restores capitalization and punctuation — for example, to clean up raw text from speech recognition.',
       p2: 'Everything happens in your browser. Your text <strong>never leaves your device</strong>. The model is downloaded once and cached for future visits.',
-      p3: '⚠️ The model can produce <strong>hallucinations</strong> — made-up words — especially on short or unusual input. This is an inherent limitation of all generative AI models. <strong>Auto-correct is not AI-based</strong>: it uses a static 160k-word dictionary and Levenshtein distance, not machine learning or LLM technology.',
+      p3: '⚠️ The model can produce <strong>hallucinations</strong> — made-up words — especially on short or unusual input. This is an inherent limitation of all generative AI models. <strong>Auto-correct is not AI-based</strong>: it uses Hunspell with the Xuxen Basque dictionary (142k words + morphology rules).',
     },
     toast: {
       modelReady: 'Model loaded! You can now correct text.',
