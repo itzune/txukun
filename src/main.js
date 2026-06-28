@@ -255,6 +255,19 @@ async function init() {
     if (modelLoaded) correctText();
   });
 
+  // Listen for suggestion click on output panel → re-spell check without model re-inference
+  document.addEventListener('txukun:respell', (e) => {
+    if (spellReady && !spellEnabled) {
+      const text = e.detail?.text || '';
+      const errors = checkSpelling(text);
+      if (errors.length > 0) {
+        setOutputTextAnnotated(annotateSpelling(text, errors), text);
+      } else {
+        setOutputText(text);
+      }
+    }
+  });
+
   // Spell toggle checkbox
   const chkSpell = document.getElementById('chkSpell');
   if (chkSpell) {

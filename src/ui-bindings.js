@@ -336,11 +336,16 @@ export function bindSpellSuggestionClicks(container) {
             textarea.value = overlayContent.textContent || '';
           }
 
-          // If it was the input panel, re-run correction
           if (isInputOverlay) {
             hideInputSpellOverlay();
-            // Trigger re-correction via a custom event
+            // Trigger full re-correction (model + spell)
             const event = new CustomEvent('txukun:recorrect');
+            document.dispatchEvent(event);
+          } else {
+            // Output panel: re-run spell check on corrected output, no model re-inference
+            const event = new CustomEvent('txukun:respell', {
+              detail: { text: overlayContent?.textContent || textarea?.value || '' }
+            });
             document.dispatchEvent(event);
           }
         });
