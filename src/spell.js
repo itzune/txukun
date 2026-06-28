@@ -51,29 +51,34 @@ export async function loadSpellChecker() {
   );
 
   // Listen for responses
-  worker.onmessage = (event) => {
-    const msg = event.data;
-    if (msg.type === 'ready') {
-      ready = true;
-      return;
-    }
-    if (msg.type === 'error') {
-      console.error('[Txukun spell worker]', msg.message);
-      ready = false;
-      return;
-    }
-    // Route spell/suggest results by ID
-    if (msg.id !== undefined && pendingRequests.has(msg.id)) {
-      const { resolve } = pendingRequests.get(msg.id);
-      pendingRequests.delete(msg.id);
-      resolve(msg);
-    }
-  };
+  const readyPromise = new Promise((resolve, reject) => {
+    worker.onmessage = (event) => {
+      const msg = event.data;
+      if (msg.type === 'ready') {
+        ready = true;
+        resolve();
+        return;
+      }
+      if (msg.type === 'error') {
+        console.error('[Txukun spell worker]', msg.message);
+        ready = false;
+        reject(new Error(msg.message));
+        return;
+      }
+      // Route spell/suggest results by ID
+      if (msg.id !== undefined && pendingRequests.has(msg.id)) {
+        const { resolve } = pendingRequests.get(msg.id);
+        pendingRequests.delete(msg.id);
+        resolve(msg);
+      }
+    };
 
-  worker.onerror = (err) => {
-    console.error('[Txukun spell worker] Worker error:', err);
-    ready = false;
-  };
+    worker.onerror = (err) => {
+      console.error('[Txukun spell worker] Worker error:', err);
+      ready = false;
+      reject(err);
+    };
+  });
 
   // Initialize
   worker.postMessage({
@@ -83,6 +88,9 @@ export async function loadSpellChecker() {
     dictionaryContent,
     wordListContent,
   });
+
+  // Wait for the worker to be fully initialized
+  await readyPromise;
 }
 
 /**
@@ -210,7 +218,6 @@ export async function checkSpelling(text) {
   if (errors.length === 0) return [];
 
   // Get suggestions for all misspelled words in parallel
-  console.log('[Txukun] checkSpelling: fetching suggestions for', errors.length, 'words:', errors.map(e => e.word));
   const suggestionPromises = errors.map(e => _suggest(e.word));
   const allSuggestions = await Promise.all(suggestionPromises);
 
@@ -227,14 +234,10 @@ export async function checkSpelling(text) {
  * Auto-correct: replace each misspelled word with Hunspell's first suggestion.
  */
 export async function autoCorrect(text) {
-  console.log('[Txukun] autoCorrect called with:', text.substring(0, 80));
-  if (!ready) { console.log('[Txukun] autoCorrect: not ready'); return { text, changes: 0, corrections: [] };
- }
+  if (!ready) return { text, changes: 0, corrections: [] };
 
   const errors = await checkSpelling(text);
-  console.log('[Txukun] autoCorrect: errors found:', errors.length, errors.map(e => e.word));
-  if (errors.length === 0) { console.log('[Txukun] autoCorrect: no errors'); return { text, changes: 0, corrections: [] };
- }
+  if (errors.length === 0) return { text, changes: 0, corrections: [] };
 
   // Sort by position (descending) so we can replace from right to left
   const sorted = [...errors].sort((a, b) => b.start - a.start);
