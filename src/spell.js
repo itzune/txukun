@@ -324,6 +324,58 @@ export function annotateBoth(text, corrections, errors) {
   return html;
 }
 
+/**
+ * Annotate finalOutput with combined corrections and errors.
+ *
+ * corrections[] has positions in the ORIGINAL (pre-correction) text.
+ * remaining[] has positions in the finalOutput (post-correction) text.
+ *
+ * Strategy: tokenize finalOutput. For each token, check if it appears
+ * as corrected text in corrections[]. If yes → green span.
+ * Otherwise, if the token is in remaining[] → red span.
+ */
+export function annotateWithCorrections(finalOutput, corrections, remaining) {
+  // Build a map of corrected-word → original-word for quick lookup
+  const correctedMap = new Map(); // correctedLower → { original, corrected }
+  for (const c of corrections) {
+    correctedMap.set(c.corrected.toLowerCase(), c);
+  }
+
+  // Build a map of misspelled-word → error object for suggestions
+  const remainingMap = new Map();
+  for (const e of remaining) {
+    remainingMap.set(e.word.toLowerCase(), e);
+  }
+
+  const tokens = tokenize(finalOutput);
+  if (tokens.length === 0) return escapeHtml(finalOutput);
+
+  let html = '';
+  let cursor = 0;
+
+  for (const tok of tokens) {
+    // Text between cursor and token
+    html += escapeHtml(finalOutput.slice(cursor, tok.start));
+    
+    const lower = tok.word.toLowerCase();
+    if (correctedMap.has(lower)) {
+      const c = correctedMap.get(lower);
+      html += `<span class="spell-corrected" title="${escapeAttr(c.original + ' → ' + c.corrected)}">${escapeHtml(tok.word)}</span>`;
+    } else if (remainingMap.has(lower)) {
+      const err = remainingMap.get(lower);
+      const suggestions = (err.suggestions || []).map(w => escapeHtml(w)).join(',');
+      html += `<span class="spell-error" title="${escapeAttr('Zuzenketak / Suggestions: ' + (err.suggestions || []).join(', '))}" data-suggestions="${escapeAttr(suggestions)}" data-word="${escapeAttr(tok.word)}">${escapeHtml(tok.word)}</span>`;
+    } else {
+      html += escapeHtml(tok.word);
+    }
+
+    cursor = tok.end;
+  }
+
+  html += escapeHtml(finalOutput.slice(cursor));
+  return html;
+}
+
 function escapeAttr(str) {
   return String(str).replace(/"/g, '&quot;');
 }

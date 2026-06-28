@@ -21,7 +21,7 @@ import {
   updateCopyDownloadButtons,
 } from './ui-bindings.js';
 import { renderExamples, bindExampleClicks } from './ui-examples.js';
-import { loadSpellChecker, checkSpelling, autoCorrect, annotateCorrections, annotateBoth, annotateSpelling, stripAnnotations } from './spell.js';
+import { loadSpellChecker, checkSpelling, autoCorrect, annotateWithCorrections, annotateSpelling, stripAnnotations } from './spell.js';
 
 // ── State ──────────────────────────────────────────
 
@@ -166,32 +166,36 @@ async function correctText() {
 
     // Run spell check if enabled and available
     let finalOutput = output;
-    let annotatedOutput = output;
+    let annotatedOutput = null;
+
     if (spellReady && spellEnabled) {
-      // Auto-correct: replace misspelled words with first suggestion
+      // Auto-correct: replace misspelled words with first suggestion.
+      // autoCorrect returns corrections[] with positions anchored to the
+      // ORIGINAL (pre-correction) text.
       const result = await autoCorrect(output);
       finalOutput = result.text;
       setSpellStatus(true, result.changes);
 
-      // Annotate: green for auto-corrected, red for remaining errors
-      if (result.corrections.length > 0) {
-        annotatedOutput = annotateCorrections(finalOutput, result.corrections);
-      }
-
-      // Also annotate remaining errors (words with no suggestions)
+      // Check remaining errors on the corrected output
       const remaining = await checkSpelling(finalOutput);
-      if (remaining.length > 0) {
-        // If there are no corrections yet, start from raw text
-        // Otherwise, layer error annotations on top of correction HTML
-        if (result.corrections.length === 0) {
-          annotatedOutput = annotateSpelling(finalOutput, remaining);
-        } else {
-          // Merge: strip correction HTML, re-annotate with both
-          annotatedOutput = annotateSpelling(finalOutput, remaining);
-          // But now we lost green spans. We need a combined annotation.
-          // For now: annotate both on the plain text
-          annotatedOutput = annotateBoth(finalOutput, result.corrections, remaining);
-        }
+
+      if (result.corrections.length > 0 || remaining.length > 0) {
+        // Annotate the ORIGINAL output text: corrections appear as green
+        // spans showing the corrected word in place of the original.
+        // Then layer red spell-error annotations for persisting errors.
+        annotatedOutput = annotateCorrections(output, result.corrections);
+        // Now re-parse remaining errors against the annotated HTML text.
+        // But we need plain-text positions. Simpler: re-spell-check the
+        // finalOutput and annotate just that, showing green from corrections.
+        // The tricky part: corrections' positions reference 'output',
+        // while 'finalOutput' is the actual text we display.
+        //
+        // Solution: build a combined annotation from finalOutput alone:
+        // 1. Tokenize finalOutput
+        // 2. For each token, check: was it corrected? (match against corrections via corrected text)
+        // 3. If not corrected but misspelled → red
+        // 4. If corrected → green
+        annotatedOutput = annotateWithCorrections(finalOutput, result.corrections, remaining);
       }
     } else if (spellReady && !spellEnabled) {
       // Spell checker loaded but disabled: just annotate, don't correct
@@ -202,7 +206,7 @@ async function correctText() {
     }
 
     setOutputText(finalOutput);
-    if (annotatedOutput !== finalOutput && annotatedOutput !== output) {
+    if (annotatedOutput && annotatedOutput !== finalOutput) {
       setOutputTextAnnotated(annotatedOutput, finalOutput);
     }
     updateCopyDownloadButtons(true);
