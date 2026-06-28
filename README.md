@@ -23,16 +23,17 @@
 - **Basque-first** — UI available in Basque and English
 - **Fast** — model (~39MB quantized) is loaded once and cached
 
+- **Spell checking** — word-list–based Basque spell checker (160k words) with click-to-fix suggestions
+
 ### Coming soon (Phase 2)
 
-- **Spell checking** — Xuxen/Hunspell dictionary integration
 - **Grammar correction** — AI-powered grammar suggestions
 - **Diff view** — see exactly what changed
 - **Real-time mode** — correct as you type
 
 ## 🧠 Model
 
-Txukun uses **[HiTZ/cap-punct-eu](https://huggingface.co/HiTZ/cap-punct-eu)**, a MarianMT model developed by [HiTZ Zentroa](https://hitz.eus/) (UPV/EHU):
+Txukun uses **[itzune/txukun-cap-punct-eu](https://huggingface.co/itzune/txukun-cap-punct-eu)**, an ONNX int8 quantized export of [HiTZ/cap-punct-eu](https://huggingface.co/HiTZ/cap-punct-eu), a MarianMT model developed by [HiTZ Zentroa](https://hitz.eus/) (UPV/EHU):
 
 | Property | Value |
 |---|---|
@@ -40,7 +41,7 @@ Txukun uses **[HiTZ/cap-punct-eu](https://huggingface.co/HiTZ/cap-punct-eu)**, a
 | Parameters | ~77M |
 | Training data | 9.78M Basque sentences |
 | License | Apache 2.0 |
-| Performance | WER: 19.55% → 5.99% (FLORES-101) |
+| Quantized size | ~77 MB (int8 ONNX) |
 
 ## 🚀 Development
 
@@ -83,10 +84,12 @@ txukun/
 
 ## 🔗 Related projects
 
+- **🔌 Txukun CLI** — same model as a command-line tool: [itzune/txukun-cli](https://github.com/itzune/txukun-cli)
 - [Parakeet-eu](https://github.com/itzune/parakeet-eu) — Basque ASR (speech-to-text)
 - [Nongoeuskara](https://github.com/itzune/nongoeuskara) — Basque dialect identification
 - [Evaleu](https://github.com/itzune/evaleu) — Basque LLM evaluation leaderboard
 - [HiTZ/cap-punct-eu](https://huggingface.co/HiTZ/cap-punct-eu) — The underlying model
+- [itzune/txukun-cap-punct-eu](https://huggingface.co/itzune/txukun-cap-punct-eu) — ONNX int8 quantized model
 
 ## 📄 License
 
