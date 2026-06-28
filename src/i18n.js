@@ -47,7 +47,7 @@ export const i18n = {
       title: 'Nola dabil?',
       p1: 'Txukun-ek <a href="https://hitz.eus/" target="_blank" rel="noopener">HiTZ Zentroak</a> (UPV/EHU) garatutako <a href="https://huggingface.co/HiTZ/cap-punct-eu" target="_blank" rel="noopener">cap-punct-eu</a> adimen artifizialeko eredua erabiltzen du. Eredu hau 9.78 milioi euskarazko esaldirekin entrenatu da eta testuaren maiuskulak eta puntuazioa berreskuratzen ditu — adibidez, ahots-ezagutzatik ateratako testu gordina txukuntzeko.',
       p2: 'Den-dena zure nabigatzailean gertatzen da. Zure testua <strong>ez da inoiz zure gailutik ateratzen</strong>. Eredua behin deskargatzen da eta cachean gordetzen da hurrengo bisitetarako.',
-      p3: '⚠️ Ereduak <strong>hallucination-ak</strong> sor ditzake — existitzen ez diren hitzak — bereziki testu labur edo arraroa sartzean. Hau jatorrizko HiTZ ereduaren muga ezaguna da. <strong>Auto-zuzenketa ez da AI bidezkoa</strong>: 160.000 hitzeko hiztegi estatiko bat eta Levenshtein distantzia erabiltzen ditu, ez machine learning edo LLM teknologiak.',
+      p3: '⚠️ Ereduak <strong>aluzinazioak</strong> sor ditzake — existitzen ez diren hitzak — bereziki testu labur edo arraroa sartzean. Hau jatorrizko HiTZ ereduaren muga ezaguna da. <strong>Auto-zuzenketa ez da AI bidezkoa</strong>: 160.000 hitzeko hiztegi estatiko bat eta Levenshtein distantzia erabiltzen ditu, ez machine learning edo LLM teknologiak.',
     },
     pipeline: {
       audio: '🎤 Audioa',
