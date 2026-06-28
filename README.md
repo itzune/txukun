@@ -49,7 +49,7 @@ Txukun uses **[itzune/txukun-cap-punct-eu](https://huggingface.co/itzune/txukun-
 
 The underlying **HiTZ/cap-punct-eu** model can produce **hallucinations** — made-up words that don't exist — especially on short, unusual, or out-of-distribution input. This is a known limitation of the model, not a bug in Txukun. The ONNX quantization to int8 slightly alters the hallucinations (different nonsense words) but does not change the root cause.
 
-**Mitigation**: Txukun's auto-correct feature catches most hallucinated tokens and replaces them with valid Basque words. For best results, provide complete, well-formed sentences.
+For best results, provide complete, well-formed sentences.
 
 ### 🟡 Spell checking
 
