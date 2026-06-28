@@ -10,7 +10,7 @@ All notable changes to Txukun will be documented in this file.
 
 - **Capitalization and punctuation restoration** using `HiTZ/cap-punct-eu` MarianMT model
 - **Client-side inference** via Transformers.js + ONNX Runtime Web (WASM backend)
-- **Float16 quantized ONNX model** served from HuggingFace Hub (`itzune/txukun-cap-punct-eu`) — 149 MB total (50% smaller than fp32)
+- **Int8 dynamically quantized ONNX model** served from HuggingFace Hub (`itzune/txukun-cap-punct-eu`) — 77 MB total (74% smaller than fp32)
 - **Custom ONNX export pipeline**: encoder + decoder with KV-cache, IR version 8 for browser compatibility
 - **Custom `tokenizer.json`** built from SentencePiece source tokenizer (Unigram + Metaspace pre-tokenizer)
 - **Basque-first i18n** with English fallback (manual language switcher)
@@ -34,10 +34,17 @@ All notable changes to Txukun will be documented in this file.
 - **spell-check Lucide icon** throughout the UI (replaced 🧹 broom emoji)
 - **MarianMT output cleaning**: strips `<unk>`, `</s>`, `<s>`, `<pad>` tokens and normalizes whitespace
 - **Properly linked references**: HiTZ Zentroa (`hitz.eus`) and `cap-punct-eu` HF repo in about section
+- **`AGENTS.md`** with project conventions, tech stack, and release checklist
+
+### Fixed
+
+- **I18n rendering**: `<p>` elements with `data-i18n` now use `innerHTML` to render formatting tags (`<strong>`, `<a>`, `<code>`)
+- **Progress bar**: normalized per-file progress values (0–100 instead of 0–1), filters to only show ONNX/tokenizer downloads
+- **Model loading**: `subfolder: ''` and `dtype: 'q8'` options to correctly locate quantized files on HF Hub
 
 ### Known Limitations
 
-- Float16 quantization may have minor accuracy impact vs fp32 (no evaluation done yet)
+- Int8 dynamic quantization may have minor accuracy impact vs fp32 (no evaluation done yet)
 - No spell checking or grammar correction (planned for Phase 2)
 - Only supports single-line and multi-line text; no paragraph-level context window awareness yet
 

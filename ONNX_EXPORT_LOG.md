@@ -189,7 +189,19 @@ plugins: [
 - Encoder: 136 MB → 34 MB (✅ 75% reduction, ONNX check passes)
 - Decoder merged: 160 MB → 160 MB (❌ no reduction)
 - **Root cause**: The decoder's `decoder_model_merged.onnx` wraps both `then_branch` and `else_branch` inside a single `If` node. Subgraph initializers = 0 (weights are in the parent graph via name resolution). `quantize_dynamic` cannot traverse into the `If` node's subgraphs to quantize the 159 float32 initializers.
-- **Future solution**: Re-export the decoder without the `If` merge (use separate `decoder_model.onnx` + `decoder_with_past_model.onnx`), then quantize each independently. This requires patching Transformers.js' `seq2seqForward` to load two separate decoder models instead of one merged model.
+
+### ✅ Attempt 14: Int8 quantization with EnableSubgraph — SUCCESS
+
+- Same as Attempt 13 but with `extra_options={"EnableSubgraph": True}`
+- This undocumented ORT flag tells the quantizer to traverse into `If`-node subgraphs
+- Encoder: 136 MB → 34 MB (75% reduction)
+- Decoder: 160 MB → 41 MB (74% reduction)
+- **Total**: 297 MB → 77 MB (74% reduction)
+- Properly quantized: `MatMul` → `MatMulInteger` + `DynamicQuantizeLinear`/`DequantizeLinear` nodes in both subgraphs
+- 159 parent-graph initializers converted from float32 to int8
+- ONNX check passes, IR version 8 preserved
+- Uploaded to HF Hub as `encoder_model_quantized.onnx` + `decoder_model_merged_quantized.onnx`
+- Txukun uses `dtype: 'q8'` to load these files
 
 ---
 
@@ -197,4 +209,4 @@ plugins: [
 
 5. **ORT Web WASM does NOT support float16.** Any fp16 model will fail with a type mismatch error at the Cast node. Use fp32, int8, or q8 only.
 
-6. **`quantize_dynamic` cannot handle If-node-wrapped models.** The optimum `seq2seq-lm-with-past` export produces a single `If` node in the merged decoder. Weights live in the parent graph and are shared across branches. ORT's quantizer can't see them. To quantize, either: (a) re-export without merge, or (b) write custom code to extract quantize merge subgraphs.
+6. **`quantize_dynamic` CAN handle If-node-wrapped models with `EnableSubgraph: True`.** This undocumented flag traverses into subgraphs and quantizes the `MatMul` ops, converting parent-graph initializers to int8. The key insight: the weights are in the parent graph (shared across `If` branches via name resolution), and `EnableSubgraph` makes the quantizer walk into the branches to rewrite the ops that reference those weights.
