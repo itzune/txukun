@@ -49,7 +49,7 @@ async function loadModel() {
       'itzune/txukun-cap-punct-eu',  // HF Hub model
       {
         device: 'wasm',
-        dtype: 'fp16',      // float16 quantized model (50% smaller)
+        dtype: 'fp32',      // fp32 weights (required by ORT Web WASM CPU backend)
         subfolder: '',       // model files are directly in repo root, not in onnx/
         progress_callback: (info) => {
           if (info.status === 'progress' && info.progress !== undefined) {
