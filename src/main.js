@@ -53,8 +53,14 @@ async function loadModel() {
         subfolder: '',       // model files are directly in repo root, not in onnx/
         progress_callback: (info) => {
           if (info.status === 'progress' && info.progress !== undefined) {
-            const pct = 10 + Math.round(info.progress * 80);
-            setProgress(pct);
+            // info.progress is 0-100 within the current file.
+            // Multiple files are downloaded, so progress resets per file.
+            // We simply show current file progress in the 10-90% range.
+            // Ignore tiny files (config.json, etc.) — only show ONNX/tokenizer progress.
+            if (info.file && (info.file.endsWith('.onnx') || info.file.endsWith('tokenizer.json'))) {
+              const pct = 10 + Math.round((info.progress / 100) * 80);
+              setProgress(pct);
+            }
           }
         },
       }
