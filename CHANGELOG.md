@@ -10,6 +10,7 @@ All notable changes to Txukun will be documented in this file.
 
 - **Capitalization and punctuation restoration** using `HiTZ/cap-punct-eu` MarianMT model
 - **Client-side inference** via Transformers.js + ONNX Runtime Web (WASM backend)
+- **Float16 quantized ONNX model** served from HuggingFace Hub (`itzune/txukun-cap-punct-eu`) — 149 MB total (50% smaller than fp32)
 - **Custom ONNX export pipeline**: encoder + decoder with KV-cache, IR version 8 for browser compatibility
 - **Custom `tokenizer.json`** built from SentencePiece source tokenizer (Unigram + Metaspace pre-tokenizer)
 - **Basque-first i18n** with English fallback (manual language switcher)
@@ -30,14 +31,15 @@ All notable changes to Txukun will be documented in this file.
 - **GitHub Actions deploy workflow**: auto-deploy to GitHub Pages (`itzune.eus/txukun/`)
 - **Itzune design system**: cosmic-void gradient background, steel-navy cards, sky-blue accents, JetBrains Mono typography, pill-shaped UI elements
 - **Dark theme only** (matching Itzune aesthetic)
-- **Release notes**: spell-check Lucide icon throughout the UI
+- **spell-check Lucide icon** throughout the UI (replaced 🧹 broom emoji)
+- **MarianMT output cleaning**: strips `<unk>`, `</s>`, `<s>`, `<pad>` tokens and normalizes whitespace
+- **Properly linked references**: HiTZ Zentroa (`hitz.eus`) and `cap-punct-eu` HF repo in about section
 
 ### Known Limitations
 
-- Model files are large (encoder 136MB, decoder 168MB) and loaded directly from the site — no CDN mirroring yet
+- Float16 quantization may have minor accuracy impact vs fp32 (no evaluation done yet)
 - No spell checking or grammar correction (planned for Phase 2)
 - Only supports single-line and multi-line text; no paragraph-level context window awareness yet
-- Output may include `<unk>` tokens in edge cases (basic cleaning applied)
 
 ---
 
