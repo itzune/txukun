@@ -120,10 +120,18 @@ async function correctText() {
 
   // Auto-correct input spelling before sending to model (when enabled)
   let modelInput = input;
+  let preModelCorrections = [];
   if (spellReady && spellEnabled) {
     const corrected = await autoCorrect(input);
     if (corrected.changes > 0) {
       modelInput = corrected.text;
+      // Save pre-model corrections for green annotation in output.
+      // We store { original, corrected } so annotateWithCorrections can
+      // match by corrected word in the final output text.
+      preModelCorrections = corrected.corrections.map(c => ({
+        original: c.original,
+        corrected: c.corrected,
+      }));
     }
   }
 
@@ -171,13 +179,21 @@ async function correctText() {
       // Auto-correct: replace misspelled words with first suggestion
       const result = await autoCorrect(output);
       finalOutput = result.text;
-      setSpellStatus(true, result.changes);
+      setSpellStatus(true, result.changes + preModelCorrections.length);
 
       // Also annotate remaining errors (words with no suggestions)
       const remaining = await checkSpelling(finalOutput);
 
-      if (result.corrections.length > 0 || remaining.length > 0) {
-        annotatedOutput = annotateWithCorrections(finalOutput, result.corrections, remaining);
+      // Merge pre-model and post-model corrections for green annotation.
+      // Pre-model corrections fixed words BEFORE the model, so they
+      // appear in the final output too (model preserves them).
+      const allCorrections = [
+        ...preModelCorrections,
+        ...result.corrections.map(c => ({ original: c.original, corrected: c.corrected })),
+      ];
+
+      if (allCorrections.length > 0 || remaining.length > 0) {
+        annotatedOutput = annotateWithCorrections(finalOutput, allCorrections, remaining);
       }
     } else if (spellReady && !spellEnabled) {
       // Spell checker loaded but disabled: just annotate, don't correct
