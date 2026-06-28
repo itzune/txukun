@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="eu">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Txukun — Euskarazko testu zuzentzailea</title>
+  <meta name="description"
+    content="Txukun — Euskarazko testuaren maiuskulak, puntuazioa eta ortografia zuzentzen dituen tresna. Doakoa, pribatua, nabigatzailean exekutatzen da." />
+
+  <meta property="og:title" content="Txukun — Euskarazko testu zuzentzailea" />
+  <meta property="og:description" content="Euskarazko testuaren maiuskulak, puntuazioa eta ortografia zuzentzen ditu. Doakoa eta pribatua." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://itzune.eus/txukun/" />
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24' fill='none' stroke='%234bb8e8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 16 6-12 6 12'/%3E%3Cpath d='M8 12h8'/%3E%3Cpath d='m16 20 2 2 4-4'/%3E%3C/svg%3E" />
+
+  <!-- Itzune Design System -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ══════════════════════════════════════════════
+       ITZUNE DESIGN SYSTEM — TOKENS
+       Adapted from itzune.github.io/css/tokens.css
+       ══════════════════════════════════════════════ */
+
+    :root {
+      /* Surfaces */
+      --color-cosmic-void: #06051d;
+      --color-deep-navy:   #061434;
+      --color-abyssal-blue:#0f1c36;
+      --color-steel-navy:  #1d293d;
+      --color-deep-slate:  #314062;
+
+      /* Gradients */
+      --gradient-cosmic-void: linear-gradient(0deg, rgb(6, 5, 29) 30%, rgb(6, 20, 52));
+
+      /* Neutrals */
+      --color-mist:        #cad5e2;
+      --color-fog:         #e5e7eb;
+      --color-ash:         #6b7d95;
+      --color-ghost-white: #ffffff;
+      --color-ice-blue:    #ebf8ff;
+
+      /* Accent palette */
+      --color-itzune-sky:     #4bb8e8;
+      --color-itzune-magenta: #e91e8c;
+      --color-itzune-orange:  #f07030;
+      --color-itzune-amber:   #f5a020;
+      --color-itzune-purple:  #8b35b8;
+      --color-itzune-red:     #e84832;
+      --color-itzune-green:   #34d399;
+
+      /* Typography */
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --font-sans: 'DM Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+      --text-caption:   13px;
+      --text-body:      15px;
+      --text-heading:   28px;
+
+      /* Spacing */
+      --sp-4:   4px;
+      --sp-8:   8px;
+      --sp-12:  12px;
+      --sp-16:  16px;
+      --sp-20:  20px;
+      --sp-24:  24px;
+      --sp-32:  32px;
+      --sp-40:  40px;
+      --sp-48:  48px;
+
+      /* Radius */
+      --radius-sm:   4px;
+      --radius-md:   8px;
+      --radius-lg:   12px;
+      --radius-xl:   16px;
+      --radius-full: 9999px;
+
+      /* Shadows */
+      --shadow-sm: rgba(0,0,0,0.1) 0px 4px 6px -1px, rgba(0,0,0,0.1) 0px 2px 4px -2px;
+      --shadow-lg: 0 12px 40px rgba(0,0,0,0.35);
+      --shadow-glow-sky: 0 0 20px rgba(75, 184, 232, 0.15), 0 0 60px rgba(75, 184, 232, 0.05);
+    }
+
+    /* ══════════════════════════════════════════════
+       RESET & BASE
+       ══════════════════════════════════════════════ */
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--font-mono);
+      font-size: var(--text-body);
+      font-weight: 400;
+      line-height: 1.6;
+      color: var(--color-mist);
+      background: var(--gradient-cosmic-void);
+      background-attachment: fixed;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      display: flex;
+      flex-direction: column;
+    }
+
+    a {
+      color: var(--color-itzune-sky);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    a:hover { color: var(--color-ghost-white); }
+
+    /* ══════════════════════════════════════════════
+       NAVIGATION
+       ══════════════════════════════════════════════ */
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--color-steel-navy);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: var(--sp-8) var(--sp-24);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      backdrop-filter: blur(12px);
+      background: rgba(29, 41, 61, 0.92);
+    }
+
+    .nav__left {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-12);
+    }
+
+    .nav__logo {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-8);
+      font-family: var(--font-mono);
+      font-size: var(--text-caption);
+      color: var(--color-ghost-white);
+      text-decoration: none;
+    }
+    .nav__logo:hover { color: var(--color-itzune-sky); }
+
+    .nav__logo-icon {
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .nav__brand {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--color-mist);
+      opacity: 0.6;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .nav__right {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-8);
+    }
+
+    .nav__link {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--color-itzune-sky);
+      text-decoration: none;
+      padding: 6px 12px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-full);
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .nav__link:hover {
+      color: var(--color-ghost-white);
+      border-color: rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.04);
+    }
+
+    /* ══════════════════════════════════════════════
+       HERO
+       ══════════════════════════════════════════════ */
+
+    .hero {
+      text-align: center;
+      padding: var(--sp-48) var(--sp-24) var(--sp-32);
+      position: relative;
+    }
+
+    .hero__icon {
+      font-size: 48px;
+      margin-bottom: var(--sp-16);
+      filter: drop-shadow(0 0 24px rgba(75, 184, 232, 0.3));
+    }
+
+    .hero__title {
+      font-family: var(--font-mono);
+      font-size: clamp(32px, 5vw, 48px);
+      font-weight: 400;
+      color: var(--color-ghost-white);
+      letter-spacing: 0.04em;
+      text-shadow: 0 0 20px rgba(75, 184, 232, 0.3), 0 0 60px rgba(233, 30, 140, 0.1);
+      margin-bottom: var(--sp-12);
+    }
+
+    .hero__subtitle {
+      font-family: var(--font-mono);
+      font-size: var(--text-body);
+      color: var(--color-mist);
+      opacity: 0.7;
+      max-width: 520px;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    .hero__features {
+      display: flex;
+      justify-content: center;
+      gap: var(--sp-20);
+      flex-wrap: wrap;
+      margin-top: var(--sp-24);
+    }
+
+    .feature-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--color-mist);
+      padding: var(--sp-4) var(--sp-12);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-full);
+      opacity: 0.7;
+    }
+    .feature-pill__dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+    .feature-pill__dot--sky { background: var(--color-itzune-sky); }
+    .feature-pill__dot--green { background: var(--color-itzune-green); }
+    .feature-pill__dot--amber { background: var(--color-itzune-amber); }
+    .feature-pill__dot--magenta { background: var(--color-itzune-magenta); }
+
+    /* ══════════════════════════════════════════════
+       MAIN LAYOUT — Two-column desktop, single mobile
+       ══════════════════════════════════════════════ */
+
+    .main {
+      flex: 1;
+      padding: 0 var(--sp-24) var(--sp-48);
+      max-width: 1100px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .editor {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--sp-20);
+    }
+
+    @media (max-width: 768px) {
+      .editor {
+        grid-template-columns: 1fr;
+      }
+      .hero__features {
+        gap: var(--sp-8);
+      }
+      .status-bar {
+        flex-direction: column;
+        gap: var(--sp-12);
+        align-items: flex-start;
+      }
+    }
+
+    /* ══════════════════════════════════════════════
+       PANEL — Input & Output cards
+       ══════════════════════════════════════════════ */
+
+    .panel {
+      background: var(--color-steel-navy);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .panel__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--sp-12) var(--sp-20);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      background: rgba(6, 5, 29, 0.4);
+    }
+
+    .panel__label {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-ash);
+      display: flex;
+      align-items: center;
+      gap: var(--sp-8);
+    }
+
+    .panel__label-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    .panel__label-dot--input { background: var(--color-itzune-orange); }
+    .panel__label-dot--output { background: var(--color-itzune-green); }
+
+    .panel__actions {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-4);
+    }
+
+    .panel__btn {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.08);
+      color: var(--color-ash);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.15s;
+      line-height: 1;
+    }
+    .panel__btn:hover {
+      color: var(--color-ghost-white);
+      border-color: rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.04);
+    }
+    .panel__btn--primary {
+      color: var(--color-itzune-sky);
+      border-color: rgba(75, 184, 232, 0.3);
+    }
+    .panel__btn--primary:hover {
+      background: rgba(75, 184, 232, 0.1);
+    }
+
+    .panel__body {
+      flex: 1;
+      position: relative;
+      min-height: 280px;
+    }
+
+    .panel__textarea {
+      width: 100%;
+      height: 100%;
+      min-height: 280px;
+      background: transparent;
+      border: none;
+      padding: var(--sp-20);
+      font-family: var(--font-mono);
+      font-size: var(--text-body);
+      line-height: 1.75;
+      color: var(--color-mist);
+      resize: vertical;
+      outline: none;
+    }
+
+    .panel__textarea::placeholder {
+      color: var(--color-ash);
+      opacity: 0.5;
+    }
+
+    .panel__textarea--output {
+      color: var(--color-ghost-white);
+    }
+
+    .panel__char-count {
+      position: absolute;
+      bottom: var(--sp-12);
+      right: var(--sp-16);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--color-ash);
+      opacity: 0.5;
+    }
+
+    /* ══════════════════════════════════════════════
+       STATUS BAR
+       ══════════════════════════════════════════════ */
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--sp-16);
+      padding: var(--sp-16) 0;
+      flex-wrap: wrap;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-8);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--color-mist);
+      opacity: 0.7;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot--inactive { background: var(--color-ash); }
+    .status-dot--loading { background: var(--color-itzune-sky); animation: pulse 1.4s ease-in-out infinite; }
+    .status-dot--ready { background: var(--color-itzune-green); }
+    .status-dot--error { background: var(--color-itzune-red); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(1.3); }
+    }
+
+    .status-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--color-itzune-sky);
+      background: rgba(10, 58, 90, 0.3);
+      border: 1px solid rgba(75, 184, 232, 0.2);
+      border-radius: var(--radius-full);
+      padding: 3px 10px;
+    }
+
+    /* ══════════════════════════════════════════════
+       PROGRESS BAR
+       ══════════════════════════════════════════════ */
+
+    .progress-wrapper {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-8);
+    }
+
+    .progress-bar {
+      width: 80px;
+      height: 3px;
+      background: var(--color-abyssal-blue);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .progress-bar__fill {
+      height: 100%;
+      background: var(--color-itzune-sky);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+
+    /* ══════════════════════════════════════════════
+       CORRECTION SIDEBAR (Phase 2)
+       ══════════════════════════════════════════════ */
+
+    .corrections-panel {
+      margin-top: var(--sp-20);
+      background: var(--color-steel-navy);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      display: none;
+    }
+    .corrections-panel--visible {
+      display: block;
+    }
+
+    .corrections-panel__header {
+      padding: var(--sp-12) var(--sp-20);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .corrections-panel__title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-ash);
+    }
+    .corrections-panel__count {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--color-itzune-green);
+    }
+
+    .corrections-list {
+      padding: var(--sp-12) var(--sp-20);
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-8);
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .correction-item {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--sp-8);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: var(--sp-8);
+      border-radius: var(--radius-sm);
+      background: rgba(6, 5, 29, 0.3);
+    }
+    .correction-item__icon {
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .correction-item__text {
+      flex: 1;
+      color: var(--color-mist);
+    }
+    .correction-item__original {
+      color: var(--color-itzune-red);
+      text-decoration: line-through;
+    }
+    .correction-item__corrected {
+      color: var(--color-itzune-green);
+    }
+    .correction-item__type {
+      font-size: 10px;
+      color: var(--color-ash);
+      opacity: 0.6;
+      margin-top: 2px;
+    }
+
+    .correction-item--punct { border-left: 2px solid var(--color-itzune-sky); }
+    .correction-item--case  { border-left: 2px solid var(--color-itzune-amber); }
+    .correction-item--spell { border-left: 2px solid var(--color-itzune-orange); }
+    .correction-item--grammar { border-left: 2px solid var(--color-itzune-magenta); }
+
+    /* ══════════════════════════════════════════════
+       ABOUT SECTION
+       ══════════════════════════════════════════════ */
+
+    .about {
+      margin-top: var(--sp-48);
+      padding: var(--sp-32);
+      background: var(--color-steel-navy);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius-xl);
+    }
+
+    .about__title {
+      font-family: var(--font-mono);
+      font-size: var(--text-body);
+      color: var(--color-ghost-white);
+      margin-bottom: var(--sp-16);
+      display: flex;
+      align-items: center;
+      gap: var(--sp-8);
+    }
+
+    .about__title-icon {
+      color: var(--color-itzune-orange);
+    }
+
+    .about__text {
+      font-family: var(--font-mono);
+      font-size: var(--text-caption);
+      color: var(--color-mist);
+      opacity: 0.8;
+      line-height: 1.7;
+    }
+
+    .about__text p + p {
+      margin-top: var(--sp-12);
+    }
+
+    .about__pipeline {
+      margin-top: var(--sp-20);
+      display: flex;
+      align-items: center;
+      gap: var(--sp-12);
+      flex-wrap: wrap;
+    }
+
+    .pipeline-step {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--color-mist);
+      padding: var(--sp-4) var(--sp-12);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: var(--radius-full);
+      opacity: 0.8;
+    }
+    .pipeline-step--active {
+      color: var(--color-itzune-sky);
+      border-color: rgba(75, 184, 232, 0.4);
+      background: rgba(75, 184, 232, 0.08);
+    }
+    .pipeline-arrow {
+      color: var(--color-ash);
+      font-family: var(--font-mono);
+      font-size: 14px;
+    }
+
+    /* ══════════════════════════════════════════════
+       EXAMPLES
+       ══════════════════════════════════════════════ */
+
+    .examples {
+      margin-top: var(--sp-24);
+    }
+
+    .examples__title {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--color-ash);
+      margin-bottom: var(--sp-12);
+    }
+
+    .examples__grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--sp-8);
+    }
+
+    .example-chip {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--color-mist);
+      padding: var(--sp-6) var(--sp-14);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius-full);
+      background: transparent;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 320px;
+    }
+    .example-chip:hover {
+      border-color: rgba(75, 184, 232, 0.3);
+      color: var(--color-ghost-white);
+      background: rgba(75, 184, 232, 0.06);
+    }
+
+    /* ══════════════════════════════════════════════
+       TOAST
+       ══════════════════════════════════════════════ */
+
+    .toast-container {
+      position: fixed;
+      bottom: var(--sp-24);
+      right: var(--sp-24);
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-8);
+    }
+
+    .toast {
+      background: var(--color-steel-navy);
+      border: 1px solid rgba(75, 184, 232, 0.2);
+      border-radius: var(--radius-md);
+      padding: var(--sp-12) var(--sp-20);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--color-mist);
+      box-shadow: var(--shadow-lg);
+      animation: toast-in 0.3s ease;
+      max-width: 360px;
+    }
+
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ══════════════════════════════════════════════
+       FOOTER
+       ══════════════════════════════════════════════ */
+
+    .footer {
+      background: var(--color-steel-navy);
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding: var(--sp-24);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--sp-20);
+      flex-wrap: wrap;
+    }
+
+    .footer__text {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--color-ash);
+    }
+
+    .footer__links {
+      display: flex;
+      gap: var(--sp-16);
+    }
+
+    .footer__link {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--color-itzune-sky);
+      text-decoration: none;
+    }
+    .footer__link:hover { color: var(--color-ghost-white); }
+
+    /* ══════════════════════════════════════════════
+       DARK MODE SCROLLBAR
+       ══════════════════════════════════════════════ */
+
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--color-deep-navy);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--color-deep-slate);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--color-ash);
+    }
+
+    /* ══════════════════════════════════════════════
+       SELECTION
+       ══════════════════════════════════════════════ */
+
+    ::selection {
+      background: rgba(75, 184, 232, 0.25);
+      color: var(--color-ghost-white);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAVIGATION -->
+  <nav class="nav" aria-label="Primary navigation">
+    <div class="nav__left">
+      <a href="https://itzune.eus" class="nav__logo" title="Itzune">
+        <span class="nav__logo-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/></svg></span>
+        <span>Txukun</span>
+      </a>
+      <span class="nav__brand" data-i18n="nav.brand">Itzune</span>
+    </div>
+    <div class="nav__right">
+      <a class="nav__link" href="https://github.com/itzune/txukun" target="_blank" rel="noopener" title="GitHub">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+        <span>GitHub</span>
+      </a>
+      <a class="nav__link" href="https://huggingface.co/HiTZ/cap-punct-eu" target="_blank" rel="noopener" title="Model on HuggingFace">
+        <span>◉</span>
+        <span>HF</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero__icon" aria-hidden="true"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--color-sky)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/></svg></div>
+    <h1 class="hero__title">Txukun</h1>
+    <p class="hero__subtitle" data-i18n="hero.subtitle">
+      Euskarazko testuaren maiuskulak, puntuazioa eta ortografia zuzentzen dituen tresna. Doakoa, pribatua — zure nabigatzailean exekutatzen da.
+    </p>
+    <div class="hero__features">
+      <span class="feature-pill">
+        <span class="feature-pill__dot feature-pill__dot--sky"></span>
+        <span data-i18n="features.cap">Maiuskulak</span>
+      </span>
+      <span class="feature-pill">
+        <span class="feature-pill__dot feature-pill__dot--green"></span>
+        <span data-i18n="features.punct">Puntuazioa</span>
+      </span>
+      <span class="feature-pill">
+        <span class="feature-pill__dot feature-pill__dot--amber"></span>
+        <span data-i18n="features.spell">Ortografia</span>
+      </span>
+      <span class="feature-pill">
+        <span class="feature-pill__dot feature-pill__dot--magenta"></span>
+        <span data-i18n="features.grammar">Gramatika</span>
+      </span>
+    </div>
+  </header>
+
+  <!-- MAIN EDITOR -->
+  <main class="main">
+
+    <!-- EXAMPLES -->
+    <div class="examples" id="examples">
+      <div class="examples__title" data-i18n="examples.title">Adibideak — klik egin probatzeko</div>
+      <div class="examples__grid" id="examplesGrid"></div>
+    </div>
+
+    <!-- EDITOR -->
+    <div class="editor" style="margin-top: var(--sp-16);">
+
+      <!-- INPUT PANEL -->
+      <div class="panel panel--input">
+        <div class="panel__header">
+          <div class="panel__label">
+            <span class="panel__label-dot panel__label-dot--input"></span>
+            <span data-i18n="input.label">Sarrera</span>
+          </div>
+          <div class="panel__actions">
+            <button class="panel__btn" id="btnClear" title="Garbitu" data-i18n-title="input.clear">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="panel__body">
+          <textarea
+            class="panel__textarea"
+            id="inputText"
+            placeholder="Idatzi edo itsatsi euskarazko testu bat hemen..."
+            data-i18n-placeholder="input.placeholder"
+            autofocus
+          ></textarea>
+          <span class="panel__char-count" id="inputCharCount">0</span>
+        </div>
+      </div>
+
+      <!-- OUTPUT PANEL -->
+      <div class="panel panel--output">
+        <div class="panel__header">
+          <div class="panel__label">
+            <span class="panel__label-dot panel__label-dot--output"></span>
+            <span data-i18n="output.label">Emaitza</span>
+          </div>
+          <div class="panel__actions">
+            <button class="panel__btn" id="btnCopy" title="Kopiatu" data-i18n-title="output.copy" disabled>
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+            <button class="panel__btn" id="btnDownload" title="Deskargatu" data-i18n-title="output.download" disabled>
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="panel__body">
+          <textarea
+            class="panel__textarea panel__textarea--output"
+            id="outputText"
+            readonly
+            placeholder="Emaitza hemen agertuko da..."
+            data-i18n-placeholder="output.placeholder"
+          ></textarea>
+          <span class="panel__char-count" id="outputCharCount">0</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ACTION BAR -->
+    <div class="status-bar" style="margin-top: var(--sp-20);">
+      <button class="panel__btn panel__btn--primary" id="btnCorrect" style="padding: 8px 20px; font-size: 13px;" disabled>
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <span data-i18n="action.correct">Zuzendu</span>
+      </button>
+
+      <div class="status-item" id="modelStatus">
+        <span class="status-dot status-dot--inactive" id="statusDot"></span>
+        <span id="statusText" data-i18n="status.idle">Eredua kargatu gabe</span>
+      </div>
+
+      <div class="progress-wrapper" id="progressWrapper" style="display:none;">
+        <div class="progress-bar">
+          <div class="progress-bar__fill" id="progressFill" style="width:0%"></div>
+        </div>
+        <span style="font-family:var(--font-mono);font-size:11px;color:var(--color-ash);" id="progressText">0%</span>
+      </div>
+    </div>
+
+    <!-- CORRECTIONS PANEL (Phase 2) -->
+    <div class="corrections-panel" id="correctionsPanel">
+      <div class="corrections-panel__header">
+        <span class="corrections-panel__title" data-i18n="corrections.title">Zuzenketak</span>
+        <span class="corrections-panel__count" id="correctionsCount">0 aldaketa</span>
+      </div>
+      <div class="corrections-list" id="correctionsList"></div>
+    </div>
+
+    <!-- ABOUT SECTION -->
+    <section class="about">
+      <h2 class="about__title">
+        <span class="about__title-icon" aria-hidden="true">ℹ</span>
+        <span data-i18n="about.title">Nola dabil?</span>
+      </h2>
+      <div class="about__text">
+        <p data-i18n="about.p1">
+          Txukun-ek <strong>HiTZ Zentroak</strong> (UPV/EHU) garatutako <code>cap-punct-eu</code> adimen artifizialeko eredua erabiltzen du. Eredu hau 9.78 milioi euskarazko esaldirekin entrenatu da eta testuaren maiuskulak eta puntuazioa berreskuratzen ditu — adibidez, ahots-ezagutzatik ateratako testu gordina txukuntzeko.
+        </p>
+        <p data-i18n="about.p2">
+          Den-dena zure nabigatzailean gertatzen da. Zure testua <strong>ez da inoiz zure gailutik ateratzen</strong>. Eredua behin deskargatzen da eta cachean gordetzen da hurrengo bisitetarako.
+        </p>
+      </div>
+      <div class="about__pipeline" style="margin-top: var(--sp-20);">
+        <span class="pipeline-step" data-i18n="pipeline.audio">🎤 Audioa</span>
+        <span class="pipeline-arrow">→</span>
+        <span class="pipeline-step" data-i18n="pipeline.asr">Parakeet-eu ASR</span>
+        <span class="pipeline-arrow">→</span>
+        <span class="pipeline-step pipeline-step--active" data-i18n="pipeline.txukun"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:4px"><path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/></svg> Txukun</span>
+        <span class="pipeline-arrow">→</span>
+        <span class="pipeline-step" data-i18n="pipeline.result">📝 Testu txukuna</span>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <span class="footer__text"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:4px"><path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/></svg> Txukun · Itzune</span>
+    <div class="footer__links">
+      <a class="footer__link" href="https://github.com/itzune/txukun" target="_blank" rel="noopener">GitHub</a>
+      <a class="footer__link" href="https://huggingface.co/HiTZ/cap-punct-eu" target="_blank" rel="noopener">HiTZ/cap-punct-eu</a>
+      <a class="footer__link" href="https://itzune.eus" target="_blank" rel="noopener">itzune.eus</a>
+    </div>
+  </footer>
+
+  <!-- TOAST CONTAINER -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- SCRIPTS -->
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

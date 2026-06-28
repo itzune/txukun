@@ -1,0 +1,10 @@
+node_modules/
+dist/
+public/txukun-cap-punct-eu/
+onnx-export/
+onnx-export-legacy/
+onnx-with-past/
+onnx-final/
+onnx-old-optimum/
+onnx-opset14/
+*.log
