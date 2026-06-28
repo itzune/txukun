@@ -4,6 +4,22 @@ All notable changes to Txukun will be documented in this file.
 
 ---
 
+## [1.2.0] — Input spell check + toggle + re-correction — 2026-06-28
+
+### Added
+- **Input panel spell checking**: after correction, the input textarea also shows spell errors with red wavy underlines. Clicking a suggestion replaces the word and automatically re-runs correction with the fixed input
+- **Spell check toggle** in the status bar ("Ortografia") — enables/disables all spell checking. Unchecking hides input and output spell overlays
+- **`?spell=0`/`?spell=1` GET parameter** to control spell check on page load (default: enabled)
+- **`txukun:recorrect` custom event** to trigger re-correction from spell suggestion clicks
+
+### Changed
+- `ui-bindings.js`: added `setInputTextAnnotated()` for input panel spell overlay, updated `bindSpellSuggestionClicks()` to detect input vs output panel and trigger re-correction accordingly
+- `main.js`: spell check gated behind `spellEnabled` flag; toggle handler shows/hides overlays; event listener for `txukun:recorrect`
+- `i18n.js`: added `spell.toggle` key ("Ortografia" / "Spell check")
+- `index.html`: added `#inputSpellOverlay` overlay div, spell toggle checkbox, toggle CSS
+
+---
+
 ## [1.1.0] — Spell checking with frequency-ranked word list — 2026-06-28
 
 ### Changed

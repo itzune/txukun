@@ -150,6 +150,22 @@ export function getOutputText() {
   return output ? output.value : '';
 }
 
+/**
+ * Show the input textarea with spell-check annotations.
+ * Renders an HTML overlay on top of the input textarea.
+ */
+export function setInputTextAnnotated(annotatedHtml, plainText) {
+  const overlay = el('inputSpellOverlay');
+  if (overlay) {
+    const content = el('inputSpellContent');
+    if (content) {
+      content.innerHTML = annotatedHtml;
+      bindSpellSuggestionClicks(content);
+    }
+    overlay.style.display = 'block';
+  }
+}
+
 // ── Copy / Download Buttons ─────────────────────────
 
 export function updateCopyDownloadButtons(hasContent) {
@@ -306,13 +322,26 @@ export function bindSpellSuggestionClicks(container) {
           span.title = `"${word}" → "${replacement}"`;
           hidePopover();
 
-          // Update the plain textarea too
-          const output = el('outputText');
-          if (output) {
-            const overlayContent = el('outputSpellContent');
-            if (overlayContent) {
-              output.value = overlayContent.textContent || '';
-            }
+          // Determine which panel: output or input
+          const isInputOverlay = span.closest('#inputSpellOverlay');
+          const overlayContent = isInputOverlay
+            ? el('inputSpellContent')
+            : el('outputSpellContent');
+          const textarea = isInputOverlay
+            ? el('inputText')
+            : el('outputText');
+
+          // Update the plain textarea
+          if (overlayContent && textarea) {
+            textarea.value = overlayContent.textContent || '';
+          }
+
+          // If it was the input panel, re-run correction
+          if (isInputOverlay) {
+            hideInputSpellOverlay();
+            // Trigger re-correction via a custom event
+            const event = new CustomEvent('txukun:recorrect');
+            document.dispatchEvent(event);
           }
         });
       });
@@ -343,4 +372,9 @@ function escapeHtml(str) {
 
 function escapeAttr(str) {
   return String(str).replace(/"/g, '&quot;');
+}
+
+function hideInputSpellOverlay() {
+  const overlay = el('inputSpellOverlay');
+  if (overlay) overlay.style.display = 'none';
 }

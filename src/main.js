@@ -14,6 +14,7 @@ import {
   getInputText,
   setOutputText,
   setOutputTextAnnotated,
+  setInputTextAnnotated,
   bindCopyButton,
   bindDownloadButton,
   bindClearButton,
@@ -29,6 +30,7 @@ let correctorPipeline = null;
 let modelLoading = false;
 let modelLoaded = false;
 let spellReady = false;
+let spellEnabled = true;  // controlled by toggle and ?spell= param
 let currentLang = 'eu';
 
 // ── Model Loading ──────────────────────────────────
@@ -153,9 +155,9 @@ async function correctText() {
 
     const output = results.join('\n');
 
-    // Run spell check if available
+    // Run spell check if enabled and available
     let annotatedOutput = output;
-    if (spellReady) {
+    if (spellReady && spellEnabled) {
       const errors = checkSpelling(output);
       setSpellStatus(true, errors.length);
       if (errors.length > 0) {
@@ -168,6 +170,15 @@ async function correctText() {
       setOutputTextAnnotated(annotatedOutput, output);
     }
     updateCopyDownloadButtons(true);
+
+    // Spell-check the input too (show errors user can fix before re-correcting)
+    if (spellReady && spellEnabled) {
+      const inputErrors = checkSpelling(input);
+      if (inputErrors.length > 0) {
+        const annotatedInput = annotateSpelling(input, inputErrors);
+        setInputTextAnnotated(annotatedInput, input);
+      }
+    }
 
     setModelStatus('ready');
 
@@ -229,6 +240,35 @@ async function init() {
 
   // Setup keyboard shortcuts
   setupKeyboardShortcuts();
+
+  // Listen for spell-corrected input → re-run correction
+  document.addEventListener('txukun:recorrect', () => {
+    if (modelLoaded) correctText();
+  });
+
+  // Spell toggle checkbox
+  const chkSpell = document.getElementById('chkSpell');
+  if (chkSpell) {
+    // ?spell=0 disables, ?spell=1 enables (default: enabled)
+    const params = new URLSearchParams(window.location.search);
+    const spellParam = params.get('spell');
+    if (spellParam === '0') {
+      spellEnabled = false;
+      chkSpell.checked = false;
+    } else {
+      chkSpell.checked = spellEnabled;
+    }
+    chkSpell.addEventListener('change', () => {
+      spellEnabled = chkSpell.checked;
+      // Hide input overlay if disabling
+      if (!spellEnabled) {
+        const overlay = document.getElementById('inputSpellOverlay');
+        if (overlay) overlay.style.display = 'none';
+        const outOverlay = document.getElementById('outputSpellOverlay');
+        if (outOverlay) outOverlay.style.display = 'none';
+      }
+    });
+  }
 
   // Auto-load model after a short delay (let the page render first)
   setTimeout(() => {

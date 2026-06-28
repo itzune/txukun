@@ -66,6 +66,7 @@ export const i18n = {
       downloaded: 'Fitxategia deskargatu da!',
     },
     spell: {
+      toggle: 'Ortografia',
       suggestions: 'Zuzenketak',
       ignore: 'Alde batera utzi',
     },
@@ -133,6 +134,7 @@ export const i18n = {
       downloaded: 'File downloaded!',
     },
     spell: {
+      toggle: 'Spell check',
       suggestions: 'Suggestions',
       ignore: 'Ignore',
     },
