@@ -34,13 +34,15 @@ export async function loadSpellChecker() {
   const basePath = import.meta.env.BASE_URL || '/txukun/';
 
   // Fetch dictionary files
-  const [affResp, dicResp] = await Promise.all([
+  const [affResp, dicResp, wordsResp] = await Promise.all([
     fetch(basePath + 'dicts/eu.aff'),
     fetch(basePath + 'dicts/eu.dic'),
+    fetch(basePath + 'dicts/eu-words.txt').catch(() => null), // optional
   ]);
 
   const affixContent = await affResp.text();
   const dictionaryContent = await dicResp.text();
+  const wordListContent = wordsResp ? await wordsResp.text() : null;
 
   // Spawn worker (Vite bundles this as a separate module)
   worker = new Worker(
@@ -79,6 +81,7 @@ export async function loadSpellChecker() {
     wasmUrl: basePath + 'hunspell.wasm',
     affixContent,
     dictionaryContent,
+    wordListContent,
   });
 }
 
@@ -221,9 +224,6 @@ export async function checkSpelling(text) {
 
 /**
  * Auto-correct: replace each misspelled word with Hunspell's first suggestion.
- * Only replaces when the edit between original and suggestion is small
- * (≤ 2 edits) — avoids replacing valid words missing from the dictionary
- * (e.g., verb participles) with different words.
  */
 export async function autoCorrect(text) {
   if (!ready) return { text, changes: 0, corrections: [] };
@@ -239,18 +239,7 @@ export async function autoCorrect(text) {
   for (const err of sorted) {
     if (err.suggestions.length > 0) {
       const original = err.word;
-      const firstSugg = err.suggestions[0];
-
-      // Only auto-correct clear typos, not dictionary gaps.
-      // For short words (≤6 chars): allow ≤2 edits (catches swap, dup, miss).
-      // For long words (>6 chars): allow ONLY 0 edits (suggest matches word
-      //   exactly) — a single-char difference in a long word is usually a
-      //   valid morphological variant, not a typo (e.g., "entzuten" vs "entzute").
-      const dist = levenshtein(original, firstSugg);
-      const maxDist = original.length <= 6 ? 2 : 0;
-      if (dist > maxDist) continue;
-
-      const corrected = firstSugg;
+      const corrected = err.suggestions[0];
       result = result.slice(0, err.start) + corrected + result.slice(err.end);
       corrections.push({ start: err.start, end: err.start + corrected.length, original, corrected });
     }
@@ -261,26 +250,6 @@ export async function autoCorrect(text) {
     changes: corrections.length,
     corrections: corrections.sort((a, b) => b.start - a.start),
   };
-}
-
-/**
- * Levenshtein edit distance between two strings.
- */
-function levenshtein(a, b) {
-  if (a.length === 0) return b.length;
-  if (b.length === 0) return a.length;
-
-  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
-  const curr = new Array(b.length + 1);
-  for (let i = 0; i < a.length; i++) {
-    curr[0] = i + 1;
-    for (let j = 0; j < b.length; j++) {
-      const cost = a[i] === b[j] ? 0 : 1;
-      curr[j + 1] = Math.min(curr[j] + 1, prev[j + 1] + 1, prev[j] + cost);
-    }
-    [prev, curr] = [curr, prev];
-  }
-  return prev[b.length];
 }
 
 /**

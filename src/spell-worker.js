@@ -21,6 +21,7 @@ let memory = null;
 let handle = 0;
 let nextAlloc = 0x200000; // 2MB — above Hunspell's internal allocations
 let ready = false;
+let wordList = null; // Set<string> — corpus-extracted words not in Xuxen
 
 // ── WASI shim (minimal, self-contained) ────────────
 
@@ -217,7 +218,7 @@ self.onmessage = async function (event) {
 
 // ── Init ────────────────────────────────────────────
 
-async function handleInit({ wasmUrl, affixContent, dictionaryContent }) {
+async function handleInit({ wasmUrl, affixContent, dictionaryContent, wordListContent }) {
   if (ready) {
     self.postMessage({ type: 'ready' });
     return;
@@ -230,6 +231,20 @@ async function handleInit({ wasmUrl, affixContent, dictionaryContent }) {
     // - Strip trailing ,1 from dict flags (Xuxen's NEEDAFFIX flag remnant)
     let affixContentFixed = affixContent.replace(/^NEEDAFFIX.*$/m, '');
     let dictionaryContentFixed = dictionaryContent.replace(/,1$/gm, '');
+
+    // Build word list Set for fallback spell checking.
+    // Xuxen dict lacks many corpus-derived words (verb participles,
+    // inflected forms). The word list (~160k words) provides coverage
+    // that Hunspell + Xuxen alone doesn't have.
+    wordList = new Set();
+    if (wordListContent) {
+      for (const line of wordListContent.split('\n')) {
+        const w = line.trim();
+        if (w && !w.startsWith('#')) {
+          wordList.add(w.toLowerCase());
+        }
+      }
+    }
 
     // Memory: 64MB initial, 256MB max
     memory = new WebAssembly.Memory({ initial: 1024, maximum: 4096 });
@@ -290,7 +305,14 @@ function handleSpell({ id, word }) {
   }
 
   try {
-    // Direct spell check
+    // Check word list first (O(1) — catches corpus-extracted words
+    // missing from Xuxen, like verb participles).
+    if (wordList && wordList.has(word.toLowerCase())) {
+      self.postMessage({ type: 'spellResult', id, correct: true });
+      return;
+    }
+
+    // Direct spell check via Hunspell
     const ptr = _alloc(word + '\0');
     let correct = wasmExports.hunspell_spell(handle, ptr) !== 0;
 
@@ -370,5 +392,6 @@ function handleDestroy() {
   }
   wasmExports = null;
   memory = null;
+  wordList = null;
   ready = false;
 }
