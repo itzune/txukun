@@ -43,6 +43,27 @@ Txukun uses **[itzune/txukun-cap-punct-eu](https://huggingface.co/itzune/txukun-
 | License | Apache 2.0 |
 | Quantized size | ~77 MB (int8 ONNX) |
 
+## ⚠️ Limitations & Disclaimer
+
+### 🔴 Hallucinations
+
+The underlying **HiTZ/cap-punct-eu** model can produce **hallucinations** — made-up words that don't exist — especially on short, unusual, or out-of-distribution input. This is a known limitation of the model, not a bug in Txukun. The ONNX quantization to int8 slightly alters the hallucinations (different nonsense words) but does not change the root cause.
+
+**Mitigation**: Txukun's auto-correct feature catches most hallucinated tokens and replaces them with valid Basque words. For best results, provide complete, well-formed sentences.
+
+### 🟡 Spell checking
+
+Txukun's spell checker is **not an AI or LLM**. It uses a static 160,000-word dictionary derived from:
+
+- The [Xuxen](https://xhuxen.eus/) Basque spell checker (Hunspell-based)
+- A frequency-ranked corpus of 2.8M Basque sentences
+
+Corrections are made by **Levenshtein distance** (edit distance) against this dictionary, sorted by corpus frequency. No machine learning or language model is involved in the spell-checking step.
+
+### 🟦 Scope
+
+Txukun is designed for **Basque text** (`eu`/`eus`). It will not work correctly for other languages.
+
 ## 🚀 Development
 
 ```bash
