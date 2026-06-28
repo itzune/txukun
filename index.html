@@ -677,32 +677,11 @@
       margin-top: var(--sp-12);
     }
 
-    .about__pipeline {
-      margin-top: var(--sp-20);
-      display: flex;
-      align-items: center;
-      gap: var(--sp-12);
-      flex-wrap: wrap;
     }
 
-    .pipeline-step {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      color: var(--color-mist);
-      padding: var(--sp-4) var(--sp-12);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: var(--radius-full);
       opacity: 0.8;
     }
-    .pipeline-step--active {
-      color: var(--color-itzune-sky);
-      border-color: rgba(75, 184, 232, 0.4);
-      background: rgba(75, 184, 232, 0.08);
     }
-    .pipeline-arrow {
-      color: var(--color-ash);
-      font-family: var(--font-mono);
-      font-size: 14px;
     }
 
     /* ══════════════════════════════════════════════
@@ -1131,15 +1110,6 @@
         <p data-i18n="about.p3">
           ⚠️ Ereduak <strong>aluzinazioak</strong> sor ditzake — existitzen ez diren hitzak — bereziki testu labur edo arraroa sartzean. AI eredu sortzaile guztien berezko arazoa da. <strong>Auto-zuzenketa ez da AI bidezkoa</strong>: 160.000 hitzeko hiztegi estatiko bat eta Levenshtein distantzia erabiltzen ditu, ez machine learning edo LLM teknologiak.
         </p>
-      </div>
-      <div class="about__pipeline" style="margin-top: var(--sp-20);">
-        <span class="pipeline-step" data-i18n="pipeline.audio">🎤 Audioa</span>
-        <span class="pipeline-arrow">→</span>
-        <span class="pipeline-step" data-i18n="pipeline.asr">Parakeet-eu ASR</span>
-        <span class="pipeline-arrow">→</span>
-        <span class="pipeline-step pipeline-step--active" data-i18n="pipeline.txukun"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px;margin-right:4px"><path d="m6 16 6-12 6 12"/><path d="M8 12h8"/><path d="m16 20 2 2 4-4"/></svg> Txukun</span>
-        <span class="pipeline-arrow">→</span>
-        <span class="pipeline-step" data-i18n="pipeline.result">📝 Testu txukuna</span>
       </div>
     </section>
 

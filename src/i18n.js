@@ -49,12 +49,6 @@ export const i18n = {
       p2: 'Den-dena zure nabigatzailean gertatzen da. Zure testua <strong>ez da inoiz zure gailutik ateratzen</strong>. Eredua behin deskargatzen da eta cachean gordetzen da hurrengo bisitetarako.',
       p3: '⚠️ Ereduak <strong>aluzinazioak</strong> sor ditzake — existitzen ez diren hitzak — bereziki testu labur edo arraroa sartzean. AI eredu sortzaile guztien berezko arazoa da. <strong>Auto-zuzenketa ez da AI bidezkoa</strong>: 160.000 hitzeko hiztegi estatiko bat eta Levenshtein distantzia erabiltzen ditu, ez machine learning edo LLM teknologiak.',
     },
-    pipeline: {
-      audio: '🎤 Audioa',
-      asr: 'Parakeet-eu ASR',
-      txukun: 'Txukun',
-      result: '📝 Testu txukuna',
-    },
     toast: {
       modelReady: 'Eredua kargatu da! Orain testua zuzendu dezakezu.',
       modelError: 'Errorea eredua kargatzean',
@@ -118,12 +112,6 @@ export const i18n = {
       p1: 'Txukun uses the <a href="https://huggingface.co/HiTZ/cap-punct-eu" target="_blank" rel="noopener">cap-punct-eu</a> AI model developed by <a href="https://hitz.eus/" target="_blank" rel="noopener">HiTZ Zentroa</a> (UPV/EHU). The model was trained on 9.78 million Basque sentences and restores capitalization and punctuation — for example, to clean up raw text from speech recognition.',
       p2: 'Everything happens in your browser. Your text <strong>never leaves your device</strong>. The model is downloaded once and cached for future visits.',
       p3: '⚠️ The model can produce <strong>hallucinations</strong> — made-up words — especially on short or unusual input. This is an inherent limitation of all generative AI models. <strong>Auto-correct is not AI-based</strong>: it uses a static 160k-word dictionary and Levenshtein distance, not machine learning or LLM technology.',
-    },
-    pipeline: {
-      audio: '🎤 Audio',
-      asr: 'Parakeet-eu ASR',
-      txukun: 'Txukun',
-      result: '📝 Clean text',
     },
     toast: {
       modelReady: 'Model loaded! You can now correct text.',
