@@ -43,10 +43,10 @@ export function spell(word) {
   if (!wordSet) return true;
   if (wordSet.has(word)) return true;
   const lower = word.toLowerCase();
-  const upper = word.toUpperCase();
-  // Try lowercase first, then uppercase (acronyms are stored as uppercase)
   if (wordSet.has(lower)) return true;
-  if (wordSet.has(upper)) return true;
+  // Try uppercase (acronyms stored in uppercase form, e.g., EITB)
+  const upper = word.toUpperCase();
+  if (upper !== lower && wordSet.has(upper)) return true;
   return false;
 }
 
