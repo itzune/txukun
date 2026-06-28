@@ -166,35 +166,17 @@ async function correctText() {
 
     // Run spell check if enabled and available
     let finalOutput = output;
-    let annotatedOutput = null;
-
+    let annotatedOutput = output;
     if (spellReady && spellEnabled) {
-      // Auto-correct: replace misspelled words with first suggestion.
-      // autoCorrect returns corrections[] with positions anchored to the
-      // ORIGINAL (pre-correction) text.
+      // Auto-correct: replace misspelled words with first suggestion
       const result = await autoCorrect(output);
       finalOutput = result.text;
       setSpellStatus(true, result.changes);
 
-      // Check remaining errors on the corrected output
+      // Also annotate remaining errors (words with no suggestions)
       const remaining = await checkSpelling(finalOutput);
 
       if (result.corrections.length > 0 || remaining.length > 0) {
-        // Annotate the ORIGINAL output text: corrections appear as green
-        // spans showing the corrected word in place of the original.
-        // Then layer red spell-error annotations for persisting errors.
-        annotatedOutput = annotateCorrections(output, result.corrections);
-        // Now re-parse remaining errors against the annotated HTML text.
-        // But we need plain-text positions. Simpler: re-spell-check the
-        // finalOutput and annotate just that, showing green from corrections.
-        // The tricky part: corrections' positions reference 'output',
-        // while 'finalOutput' is the actual text we display.
-        //
-        // Solution: build a combined annotation from finalOutput alone:
-        // 1. Tokenize finalOutput
-        // 2. For each token, check: was it corrected? (match against corrections via corrected text)
-        // 3. If not corrected but misspelled → red
-        // 4. If corrected → green
         annotatedOutput = annotateWithCorrections(finalOutput, result.corrections, remaining);
       }
     } else if (spellReady && !spellEnabled) {
