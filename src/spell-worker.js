@@ -224,6 +224,13 @@ async function handleInit({ wasmUrl, affixContent, dictionaryContent }) {
   }
 
   try {
+    // Preprocess dict data:
+    // - Strip NEEDAFFIX line from .aff (Hunspell 1.7.3 issue — flag 1
+    //   universally present in Xuxen dict causes all words to be rejected)
+    // - Strip trailing ,1 from dict flags (Xuxen's NEEDAFFIX flag remnant)
+    let affixContentFixed = affixContent.replace(/^NEEDAFFIX.*$/m, '');
+    let dictionaryContentFixed = dictionaryContent.replace(/,1$/gm, '');
+
     // Memory: 64MB initial, 256MB max
     memory = new WebAssembly.Memory({ initial: 1024, maximum: 4096 });
 
@@ -231,8 +238,8 @@ async function handleInit({ wasmUrl, affixContent, dictionaryContent }) {
     const { registerFile, ...wasiObj } = makeWasiShim(memory);
 
     // Register dictionary files
-    registerFile('/dict/eu.aff', affixContent);
-    registerFile('/dict/eu.dic', dictionaryContent);
+    registerFile('/dict/eu.aff', affixContentFixed);
+    registerFile('/dict/eu.dic', dictionaryContentFixed);
 
     // Fetch and instantiate WASM
     const response = await fetch(wasmUrl);
@@ -283,27 +290,28 @@ function handleSpell({ id, word }) {
   }
 
   try {
+    // Direct spell check
     const ptr = _alloc(word + '\0');
     let correct = wasmExports.hunspell_spell(handle, ptr) !== 0;
 
-    // Workaround: hunspell_spell may return false negatives for Xuxen dict
-    // (Hunspell 1.7.2 flag handling quirk with large numeric affix tables).
-    // Fallback: check via suggest — if suggest returns a suggestion identical
-    // to the word, treat it as correctly spelled.
+    // Hunspell 1.7.3 spell() returns false for all Xuxen words regardless of
+    // NEEDAFFIX stripping — likely a flag-parsing regression vs 1.7.0.
+    // suggest() works correctly. Use suggest-based validation as fallback:
+    // a word is correct if suggest() includes it as the first suggestion.
     if (!correct) {
-      const wordPtr = _alloc(word + '\0');
       const bufSize = 4096;
       const bufPtr = _alloc('\0'.repeat(bufSize));
-      const result = wasmExports.hunspell_suggest(handle, wordPtr, bufPtr, bufSize);
+      const result = wasmExports.hunspell_suggest(handle, ptr, bufPtr, bufSize);
       if (result > 0) {
         const dv = new DataView(memory.buffer, bufPtr, result);
         const count = dv.getUint32(0, true);
-        // If word itself appears in suggestions or first suggestion has
-        // Levenshtein distance 0, treat as correct.
-        const firstOffset = dv.getUint32(4, true);
-        const firstSugg = _readCStr(bufPtr + firstOffset);
-        if (firstSugg === word || firstSugg.toLowerCase() === word.toLowerCase()) {
-          correct = true;
+        if (count > 0) {
+          const firstOffset = dv.getUint32(4, true);
+          const firstSugg = _readCStr(bufPtr + firstOffset);
+          // Correct if suggest returns the word itself
+          if (firstSugg === word || firstSugg.toLowerCase() === word.toLowerCase()) {
+            correct = true;
+          }
         }
       }
     }
