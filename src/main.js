@@ -49,6 +49,8 @@ async function loadModel() {
       'itzune/txukun-cap-punct-eu',  // HF Hub model
       {
         device: 'wasm',
+        dtype: 'fp32',      // use full precision (no _quantized suffix)
+        subfolder: '',       // model files are directly in repo root, not in onnx/
         progress_callback: (info) => {
           if (info.status === 'progress' && info.progress !== undefined) {
             const pct = 10 + Math.round(info.progress * 80);
