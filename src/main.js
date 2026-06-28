@@ -49,7 +49,7 @@ async function loadModel() {
       'itzune/txukun-cap-punct-eu',  // HF Hub model
       {
         device: 'wasm',
-        dtype: 'fp32',      // fp32 weights (required by ORT Web WASM CPU backend)
+        dtype: 'q8',        // int8 quantized model (77 MB, 74% smaller than fp32)
         subfolder: '',       // model files are directly in repo root, not in onnx/
         progress_callback: (info) => {
           if (info.status === 'progress' && info.progress !== undefined) {
