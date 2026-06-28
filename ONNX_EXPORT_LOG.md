@@ -163,7 +163,38 @@ plugins: [
 
 ## Next Steps
 
-- [ ] Test end-to-end inference in the browser (type text, click "Zuzendu", verify output)
+- [x] Test end-to-end inference in the browser (type text, click "Zuzendu", verify output)
 - [ ] Validate output quality against the original MarianMT model in Python
-- [ ] Consider fp16 weight quantization to reduce load time and memory (ORT tools can do this without opset changes)
-- [ ] For production deployment: host model files on HuggingFace (`itzune/txukun-cap-punct-onnx`) or serve from a CDN with proper caching headers
+- [x] Host model files on HuggingFace (done: `itzune/txukun-cap-punct-eu`)
+
+---
+
+## Quantization Attempts
+
+### ❌ Attempt 12: Float16 conversion — FAILED (ORT Web WASM incompatibility)
+
+- Converted both models from fp32 to fp16 using `onnxconverter-common.float16.convert_float_to_float16()`
+- Result: `encoder_model_fp16.onnx` (68 MB) + `decoder_model_merged_fp16.onnx` (81 MB) — 50% reduction
+- Renamed with `_fp16` suffix for Transformers.js auto-detection
+- Uploaded to HF Hub under `_fp16` filenames
+- Updated Txukun code to `dtype: 'fp16'`
+- **Failed in browser**: `ERROR_CODE: 1, Type Error: Type (tensor(float16)) of output arg does not match expected type (tensor(float))`
+- **Root cause**: ONNX Runtime Web WASM's CPU backend does NOT support float16 tensors. The fp16 conversion produces `Cast` nodes from float16→float that ORT Web cannot execute.
+- **Supported dtypes in ORT Web WASM**: float32, int8, uint8, q8 (via Q/DQ nodes). Float16 is only available when a GPU/WebGPU backend is present.
+- **Reverted**: Models back to fp32 on HF Hub.
+
+### ✅ Attempt 13: Int8 quantization — PARTIAL (encoder only)
+
+- Quantized fp32 models with `onnxruntime.quantization.quantize_dynamic(..., QuantType.QInt8)`
+- Encoder: 136 MB → 34 MB (✅ 75% reduction, ONNX check passes)
+- Decoder merged: 160 MB → 160 MB (❌ no reduction)
+- **Root cause**: The decoder's `decoder_model_merged.onnx` wraps both `then_branch` and `else_branch` inside a single `If` node. Subgraph initializers = 0 (weights are in the parent graph via name resolution). `quantize_dynamic` cannot traverse into the `If` node's subgraphs to quantize the 159 float32 initializers.
+- **Future solution**: Re-export the decoder without the `If` merge (use separate `decoder_model.onnx` + `decoder_with_past_model.onnx`), then quantize each independently. This requires patching Transformers.js' `seq2seqForward` to load two separate decoder models instead of one merged model.
+
+---
+
+## Key Lessons (updated)
+
+5. **ORT Web WASM does NOT support float16.** Any fp16 model will fail with a type mismatch error at the Cast node. Use fp32, int8, or q8 only.
+
+6. **`quantize_dynamic` cannot handle If-node-wrapped models.** The optimum `seq2seq-lm-with-past` export produces a single `If` node in the merged decoder. Weights live in the parent graph and are shared across branches. ORT's quantizer can't see them. To quantize, either: (a) re-export without merge, or (b) write custom code to extract quantize merge subgraphs.
