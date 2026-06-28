@@ -2,3 +2,5 @@ node_modules/
 dist/
 .vite/
 *.log
+src/hunspell-loader.js
+src/vendor/
