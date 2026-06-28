@@ -123,12 +123,19 @@ export function checkSpelling(text) {
   const tokens = tokenize(text);
   const errors = [];
 
-  for (const tok of tokens) {
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
     if (/^\d+([.,]\d+)*$/.test(tok.word)) continue;
     if (/^https?:\/\//.test(tok.word)) continue;
     if (/@/.test(tok.word)) continue;
     if (tok.word.length < 2) continue;
     if (tok.word === tok.word.toUpperCase() && tok.word.length > 1) continue;
+
+    // Skip short suffixes attached to numbers: "%42koa" splits to "42"+"koa"
+    // "koa", "ekoa", "ko" are valid Basque suffixes, not standalone words
+    if (tok.word.length <= 5 && i > 0 && /^\d+([.,]\d+)*$/.test(tokens[i-1].word)) {
+      continue;
+    }
 
     // First: check entire word (case-insensitive)
     if (spell(tok.word)) continue;
