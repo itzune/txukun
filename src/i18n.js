@@ -66,7 +66,8 @@ export const i18n = {
       downloaded: 'Fitxategia deskargatu da!',
     },
     spell: {
-      toggle: 'Ortografia',
+      toggle: 'Auto-zuzenketa',
+      toggleHint: 'Akats ortografikoak automatikoki zuzentzen dira lehen iradokizunarekin. Desaktibatuta, soilik azpimarratuko dira.',
       suggestions: 'Zuzenketak',
       ignore: 'Alde batera utzi',
     },
@@ -134,7 +135,8 @@ export const i18n = {
       downloaded: 'File downloaded!',
     },
     spell: {
-      toggle: 'Spell check',
+      toggle: 'Auto-correct',
+      toggleHint: 'Spelling errors are automatically corrected with the first suggestion. When disabled, errors are only underlined.',
       suggestions: 'Suggestions',
       ignore: 'Ignore',
     },

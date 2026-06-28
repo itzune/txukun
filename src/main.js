@@ -343,6 +343,12 @@ function applyLanguage(lang) {
 
   // Update examples
   renderExamples(lang);
+
+  // Update spell info tooltip
+  const spellInfoBtn = document.getElementById('spellInfoBtn');
+  if (spellInfoBtn) {
+    spellInfoBtn.setAttribute('data-tooltip', t('spell.toggleHint', lang));
+  }
 }
 
 // Start

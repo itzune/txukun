@@ -4,6 +4,15 @@ All notable changes to Txukun will be documented in this file.
 
 ---
 
+## [1.3.0] — Auto-correct toggle + info tooltip — 2026-06-28
+
+### Changed
+- Renamed spell toggle from "Ortografia" to "Auto-zuzenketa" ("Auto-correct" in English)
+- Added ℹ info icon next to toggle label with hover tooltip explaining auto-correction behavior
+- Tooltip text updates when language switches (Basque/English)
+
+---
+
 ## [1.2.0] — Input spell check + toggle + re-correction — 2026-06-28
 
 ### Added
