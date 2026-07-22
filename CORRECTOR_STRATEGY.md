@@ -363,7 +363,43 @@ For each content word w at position i in the sentence:
 - Dem_none precision > 85% (low false-positive rate on clean text)
 - If recall < 20% or precision < 70%, the base BERTeus signal is too weak → consider fine-tuning a GED classifier head (Tier 3 prerequisite)
 
-**Deliverable:** Detects real-word and grammar errors using the model already deployed. Zero new dependencies, zero new download. Closes the lexical/contextual gap (axis 2) for the common case.
+### Tier 2.5 RESULTS — base model insufficient (2026-07-22)
+
+Prototype built and tested: `txukun-cli/tests/gec-benchmark/detect.py`. Two approaches tested against Elhuyar Dem_single (221 grammar errors, all real-word) + Dem_none (250 clean sentences):
+
+**Approach 1 — ALL-WORDS margin:** Compare actual word's embedding similarity against ALL 160k dictionary words.
+
+| margin | recall | precision | F1 | FP% (clean) | top-5 | top-1 |
+|--------|--------|-----------|------|-------------|-------|-------|
+| 0.05   | 93.2%  | 8.1%      | 14.9%| 76.7%       | 13    | 9     |
+| 0.10   | 58.4%  | 10.1%     | 17.3%| 34.5%       | 10    | 7     |
+| 0.15   | 20.8%  | 16.2%     | 18.2%| 6.7%        | 5     | 4     |
+
+**Approach 2 — CONFUSABLE margin:** Compare only against edit-distance 1-2 neighbors in dictionary (standard real-word error detection approach).
+
+| margin | recall | precision | F1 | FP% (clean) | top-5 | top-1 |
+|--------|--------|-----------|------|-------------|-------|-------|
+| 0.03   | 71.9%  | 11.8%     | 20.3%| 39.1%       | 48    | 8     |
+| 0.05   | 51.6%  | 13.1%     | 20.9%| 23.6%       | 37    | 7     |
+| **0.08** | **33.9%** | **19.8%** | **25.0%** | **8.8%** | **24** | **6** |
+| 0.10   | 18.1%  | 21.1%     | 19.5%| 4.3%        | 16    | 5     |
+
+**Error type breakdown (confusable, margin=0.08):**
+
+| Type | Description | Recall |
+|------|-------------|--------|
+| R2 | Verb agreement | 42.4% (50/118) |
+| R1 | Tense | 28.6% (2/7) |
+| R4 | Suffix | 29.6% (21/71) |
+| R3 | Case | 8.0% (2/25) |
+
+**Conclusion:** The confusable approach is better than all-words (F1 25.0% vs 18.2%), but **both fall short of the viability threshold** (70% precision). At the best F1 point, precision is only 19.8% — 80% of flags are false positives. Candidate quality is also poor: only 6/221 (2.7%) top-1 corrections are correct.
+
+Also tested 6 alternative strategies (top-k exclusion, relative/sentence-level margin, z-score, top-1-per-sentence) in `detect_analysis.py` — none significantly beat the simple margin threshold.
+
+**Root cause:** The raw BERTeus base model (encoder only, no MLM head) uses embedding similarity as a proxy for contextual fit. This proxy is too noisy for detection: the margin between the best candidate and the actual word doesn't reliably separate correct from incorrect usage. The re-ranking task (Tier 2) works because it's easier — picking the best of a small set. Detection is harder — deciding if a word is wrong requires knowing what the model "expects," and the embedding similarity doesn't capture this precisely enough.
+
+**Next step:** A fine-tuned GED (grammatical error detection) classifier head on BERTeus is needed. This is what Mendez (2023) did — train a binary classifier on top of BERTeus that predicts "is this word correct in context?" This requires labeled training data and a fine-tuning run. See Tier 3.
 
 ### Tier 3 — Grammar corrector (new seq2seq model, separate workstream)
 
