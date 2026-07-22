@@ -48,7 +48,9 @@ const BASE = import.meta.env.BASE_URL;
 const MODEL_DIR = `${BASE}models/berteus`;
 const EMB_PATH = `${MODEL_DIR}/word_embeddings_f16.bin`;
 const CASES_PATH = `${MODEL_DIR}/browser_test_cases.json`;
-const BERT_WEIGHT = 15.0;
+const params = new URLSearchParams(location.search);
+const DTYPE = params.get('dtype') || 'q8';
+const BERT_WEIGHT = parseFloat(params.get('weight') || '15.0');
 const EMB_DIM = 768;
 
 const log = document.getElementById('log');
@@ -217,8 +219,9 @@ async function run() {
     out('\n=== Loading BERTeus ONNX model ===');
     setStatus('Loading model...');
     const t0 = performance.now();
+    out(`  dtype=${DTYPE}, weight=${BERT_WEIGHT}`);
     const model = await AutoModel.from_pretrained('berteus', {
-      dtype: 'q8',
+      dtype: DTYPE,
       device: 'wasm',
     });
     const t1 = performance.now();

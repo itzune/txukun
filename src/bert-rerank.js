@@ -1,7 +1,7 @@
 /**
  * Txukun — BERTeus neural re-ranking (Tier 2)
  *
- * Uses BERTeus (ixa-ehu/berteus-base-cased, 110M BERT, int8 ONNX, 119MB)
+ * Uses BERTeus (ixa-ehu/berteus-base-cased, 110M BERT, int4 ONNX, 85MB)
  * via Transformers.js to score spell-correction candidates by masked
  * embedding similarity.
  *
@@ -13,7 +13,7 @@
  * (mean of subword piece embeddings from the embedding matrix).
  *
  * Validated in-browser: 29/30 cases match Python ranking (96.7%).
- * Full 933-case benchmark: +105 net (85.0% accuracy) at BERT_WEIGHT=15.
+ * Full 933-case benchmark: +110 net (85.5% accuracy) at BERT_WEIGHT=18.
  * See CORRECTOR_STRATEGY.md Appendix C.
  *
  * The model is lazy-loaded: ONNX model + embedding matrix are only fetched
@@ -42,9 +42,9 @@ const MASK_TOKEN_ID = 4; // BERTeus [MASK] token ID (from tokenizer_config.json)
 const MASK_TOKEN_STR = '[MASK]'; // standard BERT mask token (tokenizer maps to ID 4)
 
 // Weight for BERT score in the combined score.
-// Grid search peak (int8 ONNX): w=15 → +105 net (85.0%).
+// Grid search peak (int4 ONNX): w=18 → +110 net (85.5%).
 // combined = tier1_score + BERT_WEIGHT × cosine_sim
-export const BERT_WEIGHT = 15.0;
+export const BERT_WEIGHT = 18.0;
 
 // Maximum candidates to score with BERT (latency cap).
 const MAX_BERT_CANDIDATES = 5;
@@ -141,7 +141,7 @@ export async function initBERT(modelDir) {
     // Load model, tokenizer, and embeddings in parallel
     const [mdl, tok, emb] = await Promise.all([
       AutoModel.from_pretrained('berteus', {
-        dtype: 'q8',
+        dtype: 'q4',
         device: 'wasm',
       }),
       AutoTokenizer.from_pretrained('berteus'),
