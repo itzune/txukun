@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>GECToR-eus Browser Validation</title>
+<style>
+  body { font-family: monospace; padding: 20px; background: #1a1a2e; color: #eee; max-width: 1200px; }
+  h1 { color: #8b9dc3; }
+  h2 { color: #6b7fb3; margin-top: 24px; }
+  button { padding: 8px 16px; font-size: 14px; cursor: pointer; background: #16213e; color: #eee; border: 1px solid #8b9dc3; border-radius: 4px; }
+  button:hover { background: #1a1a3e; }
+  button:disabled { opacity: 0.5; cursor: wait; }
+  .pass { color: #4ade80; } .fail { color: #f87171; } .warn { color: #fbbf24; }
+  pre { background: #16213e; padding: 10px; border-radius: 5px; overflow-x: auto; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 10px; }
+  th, td { border: 1px solid #333; padding: 4px 8px; text-align: left; }
+  th { background: #16213e; }
+  textarea { width: 100%; max-width: 800px; height: 60px; background: #16213e; color: #eee; border: 1px solid #8b9dc3; border-radius: 4px; padding: 8px; font-family: monospace; font-size: 14px; }
+  input[type=number] { width: 60px; background: #16213e; color: #eee; border: 1px solid #8b9dc3; border-radius: 3px; padding: 2px 4px; }
+  .iter { margin: 8px 0; padding: 8px; background: #0d1117; border-radius: 4px; border-left: 3px solid #8b9dc3; }
+  .label-keep { color: #666; }
+  .label-change { color: #fbbf24; font-weight: bold; }
+  .label-delete { color: #f87171; }
+  .label-append { color: #4ade80; }
+  .label-replace { color: #60a5fa; }
+</style>
+</head>
+<body>
+<h1>GECToR-eus Browser Validation</h1>
+<p>Basque grammatical error correction via GECToR (RoBERTa-eus-base, int4 ONNX).<br>
+Model: <code>model_q4.onnx</code> (~85MB) + tokenizer + <code>gector_vocab.json</code></p>
+
+<h2>Interactive Test</h2>
+<textarea id="inputText" placeholder="Idatzi esaldi bat hemen...">Kaixo mundia kaixo nire izena mikel da</textarea>
+<br>
+<label>keep_confidence: <input type="number" id="keepConf" value="0" step="0.1" min="0"></label>
+<label>min_error_prob: <input type="number" id="minErrorProb" value="0.5" step="0.1" min="0" max="1"></label>
+<label>max_iterations: <input type="number" id="maxIter" value="5" min="1" max="10"></label>
+<button id="correctBtn">Correct</button>
+<span id="status" style="margin-left:10px;"></span>
+<div id="correctResult"></div>
+
+<h2>Batch Validation (Dem_single)</h2>
+<button id="runBtn">Load Model & Run Test Cases</button>
+<span id="batchStatus" style="margin-left:10px;"></span>
+<pre id="log"></pre>
+<div id="summary"></div>
+<table id="results" style="display:none">
+  <thead>
+    <tr>
+      <th>#</th><th>Input (errorful)</th><th>Expected</th><th>Browser output</th>
+      <th>Match?</th><th>Iters</th><th>Changed?</th>
+    </tr>
+  </thead>
+  <tbody id="resultsBody"></tbody>
+</table>
+
+<script type="module">
+import { InferenceSession, Tensor } from 'onnxruntime-web';
+import { AutoTokenizer, env } from '@huggingface/transformers';
+
+// ── Config ──────────────────────────────────────────
+const BASE = import.meta.env.BASE_URL;
+const MODEL_DIR = `${BASE}models/gector`;
+const ONNX_PATH = `${MODEL_DIR}/onnx/model_q4.onnx`;
+const VOCAB_PATH = `${MODEL_DIR}/gector_vocab.json`;
+const CASES_PATH = `${MODEL_DIR}/gector_test_cases.json`;
+
+// Allow URL overrides
+const params = new URLSearchParams(location.search);
+const MODEL_VARIANT = params.get('model') || 'model_q4.onnx';
+const ONNX_URL = `${MODEL_DIR}/onnx/${MODEL_VARIANT}`;
+
+// ── State ───────────────────────────────────────────
+let session = null;
+let tokenizer = null;
+let vocab = null;
+
+const log = document.getElementById('log');
+const statusEl = document.getElementById('status');
+const batchStatusEl = document.getElementById('batchStatus');
+
+function out(msg) { log.textContent += msg + '\n'; }
+function setStatus(msg) { statusEl.textContent = msg; }
+function setBatchStatus(msg) { batchStatusEl.textContent = msg; }
+
+// ── Model loading ───────────────────────────────────
+async function loadModel() {
+  if (session) return;
+
+  setBatchStatus('Loading...');
+  // Match BERTeus pattern: configure Transformers.js env for local models
+  env.allowLocalModels = true;
+  env.localModelPath = `${BASE}models/`;
+
+  const t0 = performance.now();
+
+  // Load tokenizer (Transformers.js) + vocab JSON + ONNX model buffer in parallel.
+  // Tokenizer needs tokenizer.json at ${BASE}models/gector/tokenizer.json
+  const [tok, voc, modelBuf] = await Promise.all([
+    AutoTokenizer.from_pretrained('gector'),
+    fetch(VOCAB_PATH).then(r => r.json()),
+    fetch(ONNX_URL).then(r => r.arrayBuffer()),
+  ]);
+
+  tokenizer = tok;
+  vocab = voc;
+
+  // Create ONNX inference session.
+  // Transformers.js already configured env.wasm.wasmPaths on import
+  // (shared env object with onnxruntime-web in Vite).
+  session = await InferenceSession.create(modelBuf, {
+    executionProviders: ['wasm'],
+    graphOptimizationLevel: 'all',
+  });
+
+  const t1 = performance.now();
+  out(`Model loaded in ${((t1 - t0) / 1000).toFixed(1)}s`);
+  out(`  Labels: ${vocab.num_labels}, D-labels: ${vocab.d_num_labels}`);
+  out(`  keep_label: ${vocab.keep_label}, incorrect_label: ${vocab.incorrect_label}`);
+  out(`  max_length: ${vocab.max_length}`);
+  setBatchStatus('');
+}
+
+// ── Tokenization with word_ids ──────────────────────
+// Replicates HuggingFace's is_split_into_words=True + word_ids()
+// by tokenizing each word individually with a space prefix.
+// Verified: identical token IDs and word_ids to is_split_into_words=True.
+
+function tokenizeWithWordIds(words, maxLen) {
+  const bosId = tokenizer.bos_token_id ?? 0;  // <s> = 0 for RoBERTa
+  const eosId = tokenizer.eos_token_id ?? 2;  // </s> = 2 for RoBERTa
+
+  const inputIds = [bosId];
+  const wordIds = [null]; // <s> → no word
+
+  for (let w = 0; w < words.length; w++) {
+    // Tokenize " " + word (space prefix replicates is_split_into_words behavior)
+    const enc = tokenizer(' ' + words[w], { add_special_tokens: false });
+    const ids = Array.from(enc.input_ids.data).map(Number);
+
+    for (const id of ids) {
+      if (inputIds.length >= maxLen - 1) break; // leave room for </s>
+      inputIds.push(id);
+      wordIds.push(w);
+    }
+    if (inputIds.length >= maxLen - 1) break;
+  }
+
+  inputIds.push(eosId);
+  wordIds.push(null);
+
+  return { inputIds, wordIds };
+}
+
+// ── Build word masks ────────────────────────────────
+// Marks the FIRST subword token of each word (1), others (0).
+// Special tokens (word_id=null) are always 0.
+
+function buildWordMasks(wordIds) {
+  const masks = [];
+  let prevWordId = null;
+  for (const wid of wordIds) {
+    if (wid === null) {
+      masks.push(0);
+    } else if (wid !== prevWordId) {
+      masks.push(1); // first subword of this word
+    } else {
+      masks.push(0); // continuation subword
+    }
+    prevWordId = wid;
+  }
+  return masks;
+}
+
+// ── Softmax helper ──────────────────────────────────
+
+function softmax(logits, start, len) {
+  let maxLogit = -Infinity;
+  for (let i = 0; i < len; i++) {
+    const v = logits[start + i];
+    if (v > maxLogit) maxLogit = v;
+  }
+  let sumExp = 0;
+  const exps = new Float32Array(len);
+  for (let i = 0; i < len; i++) {
+    exps[i] = Math.exp(logits[start + i] - maxLogit);
+    sumExp += exps[i];
+  }
+  return { exps, sumExp };
+}
+
+// ── Core prediction ─────────────────────────────────
+// Implements GECToR.predict(): softmax + keep_confidence + min_error_prob + argmax
+// Returns per-token predicted label IDs.
+
+async function predictTokenLabels(inputIds, attentionMask, wordIds, keepConfidence, minErrorProb) {
+  const seqLen = inputIds.length;
+
+  // Create ONNX tensors (int64 for input_ids and attention_mask)
+  const inputIdsTensor = new Tensor(
+    'int64',
+    BigInt64Array.from(inputIds.map(BigInt)),
+    [1, seqLen]
+  );
+  const attentionMaskTensor = new Tensor(
+    'int64',
+    BigInt64Array.from(attentionMask.map(BigInt)),
+    [1, seqLen]
+  );
+
+  // Run model forward pass
+  const outputs = await session.run({
+    input_ids: inputIdsTensor,
+    attention_mask: attentionMaskTensor,
+  });
+
+  const logitsLabels = outputs.logits_labels.data; // Float32Array [1, seqLen, numLabels-1]
+  const logitsD = outputs.logits_d.data;           // Float32Array [1, seqLen, d_num_labels-1]
+  // Projection layers output num_labels-1 and d_num_labels-1 classes
+  // (excluding <PAD> which is the last label ID, never predicted)
+  const numLabels = vocab.num_labels - 1;
+  const dNumLabels = vocab.d_num_labels - 1;
+  const keepIdx = vocab.label2id[vocab.keep_label];
+  const incorIdx = vocab.d_label2id[vocab.incorrect_label];
+
+  // ── Detection: compute max error probability (sentence-level) ──
+  const wordMasks = buildWordMasks(wordIds);
+  let maxErrorProb = 0;
+
+  for (let t = 0; t < seqLen; t++) {
+    if (wordMasks[t] !== 1) continue;
+
+    // Softmax over d_num_labels-1 detection classes (CORRECT, INCORRECT)
+    const { exps, sumExp } = softmax(logitsD, t * dNumLabels, dNumLabels);
+    const pIncor = exps[incorIdx] / sumExp;
+
+    if (pIncor > maxErrorProb) maxErrorProb = pIncor;
+  }
+
+  // Sentence-level threshold: if max error prob < threshold, keep everything
+  const sentenceKeepAll = maxErrorProb < minErrorProb;
+
+  // ── Label prediction: softmax + keep_confidence + argmax ──
+  const predLabelIds = new Int32Array(seqLen);
+
+  for (let t = 0; t < seqLen; t++) {
+    if (sentenceKeepAll) {
+      predLabelIds[t] = keepIdx;
+      continue;
+    }
+
+    // Softmax over all labels
+    const { exps, sumExp } = softmax(logitsLabels, t * numLabels, numLabels);
+    const probs = new Float32Array(numLabels);
+    for (let l = 0; l < numLabels; l++) probs[l] = exps[l] / sumExp;
+
+    // Apply keep_confidence bias (added AFTER softmax, not re-normalized)
+    probs[keepIdx] += keepConfidence;
+
+    // Token-level threshold: if max prob < threshold, keep
+    let maxProb = 0;
+    for (let l = 0; l < numLabels; l++) {
+      if (probs[l] > maxProb) maxProb = probs[l];
+    }
+    if (maxProb < minErrorProb) {
+      predLabelIds[t] = keepIdx;
+      continue;
+    }
+
+    // Argmax
+    let bestLabel = 0;
+    let bestProb = -Infinity;
+    for (let l = 0; l < numLabels; l++) {
+      if (probs[l] > bestProb) {
+        bestProb = probs[l];
+        bestLabel = l;
+      }
+    }
+    predLabelIds[t] = bestLabel;
+  }
+
+  return predLabelIds;
+}
+
+// ── Align token labels to words ─────────────────────
+// For each word, take the label of its FIRST subword token.
+
+function alignToWords(predLabelIds, wordIds) {
+  const wordLabels = [];
+  const noCorrectionIds = new Set([
+    vocab.label2id['$KEEP'],
+    vocab.label2id['<OOV>'],
+    vocab.label2id['<PAD>'],
+  ]);
+
+  let prevWordId = null;
+  let hasCorrections = false;
+
+  for (let t = 0; t < wordIds.length; t++) {
+    const wid = wordIds[t];
+    if (wid === null) continue;       // skip special tokens
+    if (wid === prevWordId) continue; // skip continuation subwords
+
+    const labelId = predLabelIds[t];
+    const label = vocab.id2label[String(labelId)];
+    wordLabels.push(label);
+
+    if (!noCorrectionIds.has(labelId)) {
+      hasCorrections = true;
+    }
+    prevWordId = wid;
+  }
+
+  return { wordLabels, hasCorrections };
+}
+
+// ── Apply edits ─────────────────────────────────────
+// Converts word-level labels to text changes.
+// Our model only has: $KEEP, $DELETE, $REPLACE_xxx, $APPEND_xxx
+// (No $TRANSFORM or $MERGE labels — simplified port.)
+
+function applyEdits(words, labels) {
+  const edited = [];
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    const label = labels[i] || '$KEEP';
+
+    if (word === '$START') {
+      edited.push('$START');
+    } else if (label === '<PAD>' || label === '<OOV>' || label === '$KEEP') {
+      edited.push(word);
+    } else if (label.startsWith('$REPLACE_')) {
+      edited.push(label.substring(9)); // "$REPLACE_".length = 9
+    } else if (label.startsWith('$APPEND_')) {
+      edited.push(word);
+      edited.push(label.substring(8)); // "$APPEND_".length = 8
+    } else if (label === '$DELETE') {
+      // Mark for deletion (handled by string replacement below)
+      edited.push('$DELETE');
+    } else {
+      // Unknown label (e.g. $MERGE, $TRANSFORM) — keep as-is
+      edited.push(word);
+    }
+  }
+
+  // Join and clean up $DELETE and $START
+  let result = edited.join(' ');
+  // Remove $DELETE tokens
+  result = result.replace(/ \$DELETE\b/g, '').replace(/\$DELETE /g, '').replace(/\$DELETE/g, '');
+  // Remove $START sentinel
+  result = result.replace(/\$START /g, '').replace(/\$START/g, '');
+
+  return result.split(/\s+/).filter(w => w.length > 0);
+}
+
+// ── Punctuation tokenization ───────────────────────
+// The GECToR model was trained on data where punctuation is space-separated
+// from words (e.g., "kaixo," → "kaixo ,"). We must replicate this before
+// passing text to the model, then de-tokenize the output.
+
+const PUNCT_RE = /([\.,;:!?()«»"'\-\u2013\u2014])/g;
+
+function tokenizePunctuation(text) {
+  return text.replace(PUNCT_RE, ' $1 ').replace(/\s+/g, ' ').trim();
+}
+
+function detokenizePunctuation(text) {
+  // Remove space before punctuation (but not after $START which has no punct)
+  return text.replace(/\s+([\.,;:!?()«»"'\u2013\u2014])/g, '$1');
+}
+
+// ── Full correction pipeline (iterative) ────────────
+
+async function correctText(text, keepConfidence, minErrorProb, maxIterations) {
+  const maxLen = vocab.max_length || 128;
+  let currentText = tokenizePunctuation(text);
+  const iterations = [];
+
+  for (let iter = 0; iter < maxIterations; iter++) {
+    // Prepend $START sentinel and split into words
+    const words = ['$START', ...currentText.trim().split(/\s+/)];
+
+    // Tokenize with word_ids
+    const { inputIds, wordIds } = tokenizeWithWordIds(words, maxLen);
+    const attentionMask = new Array(inputIds.length).fill(1);
+
+    // Predict token labels
+    const predLabelIds = await predictTokenLabels(
+      inputIds, attentionMask, wordIds, keepConfidence, minErrorProb
+    );
+
+    // Align to words
+    const { wordLabels, hasCorrections } = alignToWords(predLabelIds, wordIds);
+
+    // Record iteration details
+    const changes = [];
+    for (let i = 0; i < words.length; i++) {
+      const label = wordLabels[i] || '$KEEP';
+      if (label !== '$KEEP' && label !== '<PAD>' && label !== '<OOV>' && words[i] !== '$START') {
+        changes.push({ word: words[i], label });
+      }
+    }
+    iterations.push({ iter, changes, wordLabels });
+
+    if (!hasCorrections) {
+      break; // no more corrections needed
+    }
+
+    // Apply edits
+    const newWords = applyEdits(words, wordLabels);
+    currentText = newWords.join(' ');
+
+    // Prevent infinite loops (same text → same predictions)
+    // This is implicitly handled by maxIterations
+  }
+
+  // De-tokenize punctuation before returning
+  return { corrected: detokenizePunctuation(currentText), iterations };
+}
+
+// ── UI: Interactive correction ──────────────────────
+
+document.getElementById('correctBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('correctBtn');
+  btn.disabled = true;
+  setStatus('Loading model...');
+
+  try {
+    await loadModel();
+    setStatus('Correcting...');
+
+    const text = document.getElementById('inputText').value;
+    const keepConf = parseFloat(document.getElementById('keepConf').value) || 0;
+    const minErrorProb = parseFloat(document.getElementById('minErrorProb').value) || 0;
+    const maxIter = parseInt(document.getElementById('maxIter').value) || 5;
+
+    const t0 = performance.now();
+    const result = await correctText(text, keepConf, minErrorProb, maxIter);
+    const t1 = performance.now();
+
+    const resultDiv = document.getElementById('correctResult');
+    let html = `<h3>Result (${((t1 - t0) / 1000).toFixed(2)}s, ${result.iterations.length} iter)</h3>`;
+    html += `<pre>Input:     ${text}\nCorrected: ${result.corrected}</pre>`;
+
+    for (const iter of result.iterations) {
+      if (iter.changes.length === 0) {
+        html += `<div class="iter"><span class="label-keep">Iteration ${iter.iter}: no changes</span></div>`;
+      } else {
+        html += `<div class="iter"><strong>Iteration ${iter.iter}:</strong><br>`;
+        for (const c of iter.changes) {
+          const cls = c.label === '$DELETE' ? 'label-delete'
+            : c.label.startsWith('$APPEND') ? 'label-append'
+            : c.label.startsWith('$REPLACE') ? 'label-replace'
+            : 'label-change';
+          html += `  <span class="${cls}">${c.word} → ${c.label}</span><br>`;
+        }
+        html += `</div>`;
+      }
+    }
+
+    resultDiv.innerHTML = html;
+    setStatus('Done');
+  } catch (err) {
+    console.error(err);
+    setStatus(`Error: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ── UI: Batch validation ────────────────────────────
+
+document.getElementById('runBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+
+  try {
+    await loadModel();
+    setBatchStatus('Loading test cases...');
+
+    const response = await fetch(CASES_PATH);
+    const cases = await response.json();
+
+    out(`\nRunning ${cases.length} test cases...`);
+    out(`  keep_confidence=0, min_error_prob=0.5, max_iterations=5\n`);
+
+    let exactMatch = 0;
+    let changedCount = 0;
+    let correctChanges = 0;
+    let wrongChanges = 0;
+    const t0 = performance.now();
+
+    const tbody = document.getElementById('resultsBody');
+    tbody.innerHTML = '';
+    document.getElementById('results').style.display = '';
+
+    for (let i = 0; i < cases.length; i++) {
+      const c = cases[i];
+      const result = await correctText(c.source, 0, 0.5, 5);
+
+      const match = result.corrected === c.target;
+      if (match) exactMatch++;
+
+      const changed = result.corrected !== c.source;
+      if (changed) {
+        changedCount++;
+        if (match) correctChanges++;
+        else wrongChanges++;
+      }
+
+      // Add to table (show first 50)
+      if (i < 50) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${i + 1}</td>
+          <td>${c.source}</td>
+          <td>${c.target}</td>
+          <td>${result.corrected}</td>
+          <td class="${match ? 'pass' : 'fail'}">${match ? '✓' : '✗'}</td>
+          <td>${result.iterations.length}</td>
+          <td>${changed ? 'yes' : 'no'}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      if ((i + 1) % 20 === 0) {
+        setBatchStatus(`${i + 1}/${cases.length}...`);
+      }
+    }
+
+    const t1 = performance.now();
+    const totalSec = ((t1 - t0) / 1000).toFixed(1);
+
+    const summary = document.getElementById('summary');
+    summary.innerHTML = `
+      <h2>Summary</h2>
+      <table>
+        <tr><th>Metric</th><th>Value</th></tr>
+        <tr><td>Total cases</td><td>${cases.length}</td></tr>
+        <tr><td>Exact match</td><td class="pass">${exactMatch}/${cases.length} (${(exactMatch / cases.length * 100).toFixed(1)}%)</td></tr>
+        <tr><td>Changed (any edit)</td><td>${changedCount}</td></tr>
+        <tr><td>Changed & correct</td><td class="pass">${correctChanges}</td></tr>
+        <tr><td>Changed & wrong</td><td class="fail">${wrongChanges}</td></tr>
+        <tr><td>Unchanged (correct)</td><td>${cases.length - changedCount}</td></tr>
+        <tr><td>Total time</td><td>${totalSec}s (${((t1 - t0) / cases.length / 1000).toFixed(2)}s/case)</td></tr>
+      </table>
+    `;
+
+    out(`\nDone in ${totalSec}s`);
+    out(`  Exact match: ${exactMatch}/${cases.length} (${(exactMatch / cases.length * 100).toFixed(1)}%)`);
+    out(`  Changed: ${changedCount} (correct: ${correctChanges}, wrong: ${wrongChanges})`);
+    setBatchStatus('');
+  } catch (err) {
+    console.error(err);
+    out(`Error: ${err.message}`);
+    setBatchStatus(`Error: ${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

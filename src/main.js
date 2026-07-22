@@ -22,6 +22,7 @@ import {
 } from './ui-bindings.js';
 import { renderExamples, bindExampleClicks } from './ui-examples.js';
 import { loadSpellChecker, checkSpelling, autoCorrect, annotateWithCorrections, annotateSpelling, stripAnnotations } from './spell.js';
+import { correctGrammar, initGector, isGectorReady, isGectorFailed } from './gector.js';
 
 console.log('[DEBUG] txukun main.js loaded');
 
@@ -32,6 +33,7 @@ let modelLoading = false;
 let modelLoaded = false;
 let spellReady = false;
 let spellEnabled = true;  // controlled by toggle and ?spell= param
+let grammarEnabled = true; // controlled by ?grammar= param
 let currentLang = 'eu';
 
 // ── Model Loading ──────────────────────────────────
@@ -91,6 +93,16 @@ async function loadModel() {
       spellReady = false;
       setSpellStatus(false, String(err).slice(0, 40));
     }
+
+    // Pre-load GECToR grammar model in the background (lazy, non-blocking)
+    if (grammarEnabled) {
+      initGector().then(() => {
+        if (isGectorReady()) {
+          console.log('[txukun] GECToR grammar model ready');
+        }
+      });
+    }
+
     setModelStatus('ready');
   } catch (err) {
     console.error('Failed to load model:', err);
@@ -226,8 +238,19 @@ async function correctText() {
       results.push(text || input);
     }
 
-    const output = results.join('\n');
+    let output = results.join('\n');
     console.log('[DEBUG] MarianMT joined output:', JSON.stringify({ modelInput, output }));
+
+    // GECToR grammar correction (Tier 3)
+    // Fixes real-word grammar errors (verb agreement, case, tense, suffix)
+    // that spell check cannot detect. Runs after MarianMT cap-punct.
+    if (grammarEnabled && !isGectorFailed()) {
+      const grammarResult = await correctGrammar(output);
+      if (grammarResult.changed) {
+        console.log('[DEBUG] GECToR:', JSON.stringify({ input: output, output: grammarResult.corrected }));
+        output = grammarResult.corrected;
+      }
+    }
 
     // Run spell check if enabled and available
     let finalOutput = output;
@@ -357,6 +380,12 @@ async function init() {
       chkSpell.checked = false;
     } else {
       chkSpell.checked = spellEnabled;
+    }
+
+    // ?grammar=0 disables GECToR (default: enabled)
+    const grammarParam = params.get('grammar');
+    if (grammarParam === '0') {
+      grammarEnabled = false;
     }
     chkSpell.addEventListener('change', () => {
       spellEnabled = chkSpell.checked;
