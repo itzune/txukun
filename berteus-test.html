@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>BERTeus ONNX Browser Validation</title>
+<style>
+  body { font-family: monospace; padding: 20px; background: #1a1a2e; color: #eee; max-width: 1200px; }
+  h1 { color: #8b9dc3; }
+  button { padding: 8px 16px; font-size: 14px; cursor: pointer; background: #16213e; color: #eee; border: 1px solid #8b9dc3; border-radius: 4px; }
+  button:hover { background: #1a1a3e; }
+  button:disabled { opacity: 0.5; cursor: wait; }
+  .pass { color: #4ade80; } .fail { color: #f87171; } .warn { color: #fbbf24; }
+  pre { background: #16213e; padding: 10px; border-radius: 5px; overflow-x: auto; font-size: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 10px; }
+  th, td { border: 1px solid #333; padding: 4px 8px; text-align: left; }
+  th { background: #16213e; }
+  .score-cell { font-family: monospace; }
+  #log { max-height: 300px; }
+</style>
+</head>
+<body>
+<h1>BERTeus ONNX Browser Validation</h1>
+<p>Validates int8 ONNX BERTeus (masked embedding similarity) against Python scores.<br>
+Model: <code>model_quantized.onnx</code> (119MB) + <code>word_embeddings_f16.bin</code> (74MB)</p>
+
+<button id="runBtn">Load Model & Run 30 Test Cases</button>
+<span id="status" style="margin-left:10px;"></span>
+
+<pre id="log"></pre>
+
+<div id="summary"></div>
+<table id="results" style="display:none">
+  <thead>
+    <tr>
+      <th>#</th><th>Typo</th><th>Correct</th>
+      <th>T1 pick</th><th>T2 browser</th><th>T2 python</th>
+      <th>Browser ✓?</th><th>Match Py?</th>
+      <th>Score diff (max)</th>
+    </tr>
+  </thead>
+  <tbody id="resultsBody"></tbody>
+</table>
+
+<script type="module">
+import { AutoModel, AutoTokenizer, env } from '@huggingface/transformers';
+
+const BASE = import.meta.env.BASE_URL;
+const MODEL_DIR = `${BASE}models/berteus`;
+const EMB_PATH = `${MODEL_DIR}/word_embeddings_f16.bin`;
+const CASES_PATH = `${MODEL_DIR}/browser_test_cases.json`;
+const BERT_WEIGHT = 15.0;
+const EMB_DIM = 768;
+
+const log = document.getElementById('log');
+const statusEl = document.getElementById('status');
+function out(msg) { log.textContent += msg + '\n'; }
+function setStatus(msg) { statusEl.textContent = msg; }
+
+// ── float16 → float32 conversion (bit manipulation) ──────────────────
+function float16BufferToFloat32(buffer) {
+  const uint16 = new Uint16Array(buffer);
+  const float32 = new Float32Array(uint16.length);
+  const uint32 = new Uint32Array(float32.buffer);
+  for (let i = 0; i < uint16.length; i++) {
+    const h = uint16[i];
+    const sign = (h >>> 15) & 0x1;
+    const exp = (h >>> 10) & 0x1f;
+    const mant = h & 0x3ff;
+    let bits;
+    if (exp === 0) {
+      if (mant === 0) {
+        bits = sign << 31;
+      } else {
+        let m = mant, e = -1;
+        while ((m & 0x400) === 0) { m <<= 1; e--; }
+        m &= 0x3ff;
+        bits = (sign << 31) | ((127 - 15 + e) << 23) | (m << 13);
+      }
+    } else if (exp === 31) {
+      bits = (sign << 31) | 0x7f800000 | (mant << 13);
+    } else {
+      bits = (sign << 31) | ((exp + 127 - 15) << 23) | (mant << 13);
+    }
+    uint32[i] = bits;
+  }
+  return float32;
+}
+
+// ── vector operations ────────────────────────────────────────────────
+function normalize(vec) {
+  let norm = 0;
+  for (let i = 0; i < vec.length; i++) norm += vec[i] * vec[i];
+  norm = Math.sqrt(norm) + 1e-8;
+  const result = new Float32Array(vec.length);
+  for (let i = 0; i < vec.length; i++) result[i] = vec[i] / norm;
+  return result;
+}
+
+function dotProduct(a, b) {
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += a[i] * b[i];
+  return sum;
+}
+
+// ── load embedding matrix ────────────────────────────────────────────
+async function loadEmbeddings() {
+  out('  Fetching word_embeddings_f16.bin...');
+  const t0 = performance.now();
+  const response = await fetch(EMB_PATH);
+  const buffer = await response.arrayBuffer();
+  const t1 = performance.now();
+  out(`  Downloaded ${(buffer.byteLength / 1e6).toFixed(1)} MB in ${((t1-t0)/1000).toFixed(1)}s`);
+
+  out('  Converting float16 → float32...');
+  const t2 = performance.now();
+  const embeddings = float16BufferToFloat32(buffer);
+  const t3 = performance.now();
+  const vocabSize = embeddings.length / EMB_DIM;
+  out(`  Converted ${vocabSize} × ${EMB_DIM} embeddings in ${((t3-t2)/1000).toFixed(1)}s`);
+  return { embeddings, vocabSize };
+}
+
+// ── score a single case ──────────────────────────────────────────────
+async function scoreCase(model, tokenizer, embeddings, vocabSize, sentenceWords, targetIdx, candidates) {
+  // Build masked sentence
+  const words = [...sentenceWords];
+  const MASK_TOKEN = '[MASK]';
+  if (targetIdx < words.length) {
+    words[targetIdx] = MASK_TOKEN;
+  }
+  const text = words.join(' ');
+
+  // Tokenize
+  const inputs = tokenizer(text, { truncation: true, max_length: 512, padding: false });
+
+  // Run BERT
+  const outputs = await model(inputs);
+  const lastHidden = outputs.last_hidden_state;
+  const data = lastHidden.data;     // Float32Array
+  const dims = lastHidden.dims;     // [1, seqLen, 768]
+  const seqLen = dims[1];
+
+  // Find [MASK] position (token ID = 4 for BERTeus)
+  const inputIds = Array.from(inputs.input_ids.data).map(Number);
+  let maskPos = -1;
+  for (let i = 0; i < inputIds.length; i++) {
+    if (inputIds[i] === 4) { // mask_token_id = 4
+      maskPos = i;
+      break;
+    }
+  }
+  if (maskPos === -1) {
+    return candidates.map(() => ({ score: 0, error: 'no_mask' }));
+  }
+
+  // Get mask hidden state
+  const maskStart = maskPos * EMB_DIM;
+  const maskHidden = data.slice(maskStart, maskStart + EMB_DIM);
+  const maskNorm = normalize(maskHidden);
+
+  // Score each candidate
+  const results = [];
+  for (const cand of candidates) {
+    // Tokenize candidate (no special tokens)
+    const candInputs = tokenizer(cand, { add_special_tokens: false });
+    const candIds = Array.from(candInputs.input_ids.data).map(Number);
+
+    if (candIds.length === 0) {
+      results.push({ score: 0, nTokens: 0 });
+      continue;
+    }
+
+    // Mean of subword embeddings
+    const candEmb = new Float32Array(EMB_DIM);
+    let validTokens = 0;
+    for (let t = 0; t < candIds.length; t++) {
+      const id = candIds[t];
+      if (id < vocabSize) {
+        const embStart = id * EMB_DIM;
+        for (let d = 0; d < EMB_DIM; d++) {
+          candEmb[d] += embeddings[embStart + d];
+        }
+        validTokens++;
+      }
+    }
+    if (validTokens > 0) {
+      for (let d = 0; d < EMB_DIM; d++) candEmb[d] /= validTokens;
+    }
+
+    const candNorm = normalize(candEmb);
+    const cosSim = dotProduct(maskNorm, candNorm);
+
+    results.push({ score: cosSim, nTokens: candIds.length });
+  }
+
+  return results;
+}
+
+// ── main ─────────────────────────────────────────────────────────────
+async function run() {
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+
+  try {
+    // 1. Load test cases
+    out('=== Loading test cases ===');
+    const casesResp = await fetch(CASES_PATH);
+    const testCases = await casesResp.json();
+    out(`  ${testCases.length} cases loaded`);
+
+    // 2. Configure Transformers.js for local models
+    env.allowRemoteModels = false;
+    env.allowLocalModels = true;
+    env.localModelPath = `${BASE}models/`;
+
+    // 3. Load BERT model
+    out('\n=== Loading BERTeus ONNX model ===');
+    setStatus('Loading model...');
+    const t0 = performance.now();
+    const model = await AutoModel.from_pretrained('berteus', {
+      dtype: 'q8',
+      device: 'wasm',
+    });
+    const t1 = performance.now();
+    out(`  Model loaded in ${((t1-t0)/1000).toFixed(1)}s`);
+
+    // 4. Load tokenizer
+    out('\n=== Loading tokenizer ===');
+    const tokenizer = await AutoTokenizer.from_pretrained('berteus');
+    out('  Tokenizer loaded');
+
+    // 5. Load embeddings
+    out('\n=== Loading embedding matrix ===');
+    setStatus('Loading embeddings...');
+    const { embeddings, vocabSize } = await loadEmbeddings();
+
+    // 6. Run test cases
+    out('\n=== Running test cases ===');
+    setStatus('Running...');
+    let browserCorrect = 0;
+    let pythonCorrect = 0;
+    let t1Correct = 0;
+    let matchPython = 0;
+    let maxScoreDiff = 0;
+    let totalScoreDiff = 0;
+    let scoreDiffCount = 0;
+
+    const resultsBody = document.getElementById('resultsBody');
+    document.getElementById('results').style.display = '';
+
+    for (let i = 0; i < testCases.length; i++) {
+      const tc = testCases[i];
+      const cands = tc.candidates;
+      const candWords = cands.map(c => c.word);
+
+      // Score with browser BERTeus
+      const browserScores = await scoreCase(
+        model, tokenizer, embeddings, vocabSize,
+        tc.sentence_words, tc.target_idx, candWords
+      );
+
+      // Combined score: tier1 + BERT_WEIGHT × bert_score
+      const browserCombined = cands.map((c, j) => ({
+        word: c.word,
+        combined: c.tier1_score + BERT_WEIGHT * (browserScores[j]?.score || 0),
+        bertScore: browserScores[j]?.score || 0,
+      }));
+      browserCombined.sort((a, b) => b.combined - a.combined);
+      const browserTop = browserCombined[0].word;
+
+      // Python combined (using cached scores)
+      const pythonCombined = cands.map((c, j) => ({
+        word: c.word,
+        combined: c.tier1_score + BERT_WEIGHT * tc.bert_scores_pll_mean[j],
+        bertScore: tc.bert_scores_pll_mean[j],
+      }));
+      pythonCombined.sort((a, b) => b.combined - a.combined);
+      const pythonTop = pythonCombined[0].word;
+
+      // T1 top (highest tier1_score)
+      const t1Top = cands.reduce((a, b) => a.tier1_score > b.tier1_score ? a : b).word;
+
+      // Compare
+      const correct = tc.correct;
+      const browserOK = browserTop.toLowerCase() === correct.toLowerCase();
+      const pythonOK = pythonTop.toLowerCase() === correct.toLowerCase();
+      const t1OK = t1Top.toLowerCase() === correct.toLowerCase();
+      const match = browserTop === pythonTop;
+
+      if (browserOK) browserCorrect++;
+      if (pythonOK) pythonCorrect++;
+      if (t1OK) t1Correct++;
+      if (match) matchPython++;
+
+      // Score difference
+      for (let j = 0; j < cands.length; j++) {
+        const diff = Math.abs((browserScores[j]?.score || 0) - tc.bert_scores_pll_mean[j]);
+        if (diff > maxScoreDiff) maxScoreDiff = diff;
+        totalScoreDiff += diff;
+        scoreDiffCount++;
+      }
+
+      // Add to table
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${i}</td>
+        <td>${tc.typo}</td>
+        <td class="${browserOK ? 'pass' : 'fail'}">${correct}</td>
+        <td class="${t1OK ? 'pass' : 'fail'}">${t1Top}</td>
+        <td class="${browserOK ? 'pass' : 'fail'}">${browserTop}</td>
+        <td class="${pythonOK ? 'pass' : 'fail'}">${pythonTop}</td>
+        <td class="${browserOK ? 'pass' : 'fail'}">${browserOK ? '✓' : '✗'}</td>
+        <td class="${match ? 'pass' : 'warn'}">${match ? '✓' : '✗'}</td>
+        <td class="score-cell">${maxScoreDiff > 0 ? maxScoreDiff.toFixed(4) : '—'}</td>
+      `;
+      resultsBody.appendChild(row);
+
+      if ((i + 1) % 10 === 0) {
+        out(`  ${i+1}/${testCases.length} done`);
+        setStatus(`Running... ${i+1}/${testCases.length}`);
+      }
+    }
+
+    // Summary
+    const meanDiff = scoreDiffCount > 0 ? totalScoreDiff / scoreDiffCount : 0;
+    out('\n=== Summary ===');
+    out(`  Test cases:      ${testCases.length}`);
+    out(`  T1 correct:      ${t1Correct}/${testCases.length} (${(t1Correct/testCases.length*100).toFixed(1)}%)`);
+    out(`  T2 browser:      ${browserCorrect}/${testCases.length} (${(browserCorrect/testCases.length*100).toFixed(1)}%)`);
+    out(`  T2 python:       ${pythonCorrect}/${testCases.length} (${(pythonCorrect/testCases.length*100).toFixed(1)}%)`);
+    out(`  Match Python:    ${matchPython}/${testCases.length} (${(matchPython/testCases.length*100).toFixed(1)}%)`);
+    out(`  Max score diff:  ${maxScoreDiff.toFixed(6)}`);
+    out(`  Mean score diff: ${meanDiff.toFixed(6)}`);
+
+    document.getElementById('summary').innerHTML = `
+      <h2>Summary</h2>
+      <table style="width:auto;">
+        <tr><th>Metric</th><th>Value</th></tr>
+        <tr><td>T1 correct</td><td>${t1Correct}/${testCases.length} (${(t1Correct/testCases.length*100).toFixed(1)}%)</td></tr>
+        <tr><td>T2 browser</td><td class="pass">${browserCorrect}/${testCases.length} (${(browserCorrect/testCases.length*100).toFixed(1)}%)</td></tr>
+        <tr><td>T2 python</td><td>${pythonCorrect}/${testCases.length} (${(pythonCorrect/testCases.length*100).toFixed(1)}%)</td></tr>
+        <tr><td>Match Python ranking</td><td>${matchPython}/${testCases.length} (${(matchPython/testCases.length*100).toFixed(1)}%)</td></tr>
+        <tr><td>Max score diff</td><td>${maxScoreDiff.toFixed(6)}</td></tr>
+        <tr><td>Mean score diff</td><td>${meanDiff.toFixed(6)}</td></tr>
+      </table>
+    `;
+
+    setStatus('Done!');
+  } catch (err) {
+    out(`\nERROR: ${err.message}`);
+    console.error(err);
+    setStatus('Error — see log');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('runBtn').addEventListener('click', () => {
+  log.textContent = '';
+  run();
+});
+</script>
+</body>
+</html>
