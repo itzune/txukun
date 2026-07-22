@@ -275,20 +275,14 @@ export function rankCandidates(typed, hunspellSuggestions, fmap) {
   return ranked.length > 0 ? ranked[0] : null;
 }
 
-// LM re-ranking is loaded dynamically (lazy) so wllama's 357KB bundle
-// can't break page load if it fails. See lm-rerank.js.
-let lmModule = null;
-async function getLM() {
-  if (!lmModule) lmModule = await import('./lm-rerank.js');
-  return lmModule;
+// BERTeus re-ranking is loaded dynamically (lazy) so the 193MB model
+// bundle (119MB ONNX + 74MB embeddings) is only fetched when a spell
+// error with multiple candidates is first encountered. See bert-rerank.js.
+let bertModule = null;
+async function getBERT() {
+  if (!bertModule) bertModule = await import('./bert-rerank.js');
+  return bertModule;
 }
-
-// Model URL for the futo GGUF (BOS-patched, lazy-loaded).
-const LM_MODEL_URL = (import.meta.env.BASE_URL || '/') + 'models/eu_futo_v2_nobos.gguf';
-
-// How many characters of context before the error to feed the LM.
-// 200 chars ≈ 30–40 words — enough for a sentence or two.
-const LM_CONTEXT_CHARS = 200;
 
 // ── Worker Communication Helpers ────────────────────
 
@@ -425,13 +419,13 @@ export async function checkSpelling(text) {
  *
  * Two-tier re-ranking:
  *   Tier 1 (fast): frequency + edit distance via getRankedCandidates().
- *   Tier 2 (slow): LM surprisal via wllama, lazy-loaded on first use.
+ *   Tier 2 (slow): BERTeus masked embedding similarity, lazy-loaded on first use.
  *
- * The LM is only invoked when:
+ * The BERT model is only invoked when:
  *   1. It has finished loading (non-blocking — degrades to Tier 1 otherwise)
  *   2. There are ≥2 candidates (a single candidate needs no re-ranking)
  *
- * Combined score = tier1_score + LM_WEIGHT · surprisal
+ * Combined score = tier1_score + BERT_WEIGHT × cosine_sim
  *
  * Words with no confident candidate are left unchanged (safe degradation).
  */
@@ -451,34 +445,34 @@ export async function autoCorrect(text) {
     const ranked = getRankedCandidates(err.word, err.suggestions, freqMap);
     let best = ranked.length > 0 ? ranked[0] : null;
 
-    // Tier 2: LM re-ranking when multiple candidates exist and LM is ready.
+    // Tier 2: BERTeus re-ranking when multiple candidates exist and BERT is ready.
     if (ranked.length >= 2) {
-      let lm = null;
-      try { lm = await getLM(); } catch (e) { console.warn('[spell] LM module load failed:', e); }
-      if (lm && !lm.isLMFailed()) {
-        if (!lm.isLMReady()) {
-          // First use: block until LM loads so this correction benefits from Tier 2.
-          console.log('[DEBUG] LM loading (first use)...');
-          await lm.initLM(LM_MODEL_URL);
+      let bert = null;
+      try { bert = await getBERT(); } catch (e) { console.warn('[spell] BERT module load failed:', e); }
+      if (bert && !bert.isBERTFailed()) {
+        if (!bert.isBERTReady()) {
+          // First use: block until BERT loads so this correction benefits from Tier 2.
+          console.log('[DEBUG] BERT loading (first use)...');
+          await bert.initBERT();
         }
-        if (lm.isLMReady()) {
-          const context = result.slice(Math.max(0, err.start - LM_CONTEXT_CHARS), err.start).trim();
+        if (bert.isBERTReady()) {
           const candidates = ranked.slice(0, 5).map(c => c.word.toLowerCase());
-          const surprisals = await lm.lmRerank(context, candidates);
+          // BERTeus needs full text + error position for bidirectional context
+          const bertScores = await bert.bertRerank(result, err.start, err.end, candidates);
 
-          // Combined score = tier1 + LM_WEIGHT · surprisal
+          // Combined score = tier1 + BERT_WEIGHT × cosine_sim
           let bestCombined = -Infinity;
-          for (let i = 0; i < ranked.length && i < surprisals.length; i++) {
-            const combined = ranked[i].score + lm.LM_WEIGHT * surprisals[i];
+          for (let i = 0; i < ranked.length && i < bertScores.length; i++) {
+            const combined = ranked[i].score + bert.BERT_WEIGHT * bertScores[i];
             if (combined > bestCombined) {
               bestCombined = combined;
               best = ranked[i];
             }
           }
-          console.log('[DEBUG] LM rerank:', JSON.stringify({
+          console.log('[DEBUG] BERT rerank:', JSON.stringify({
             word: err.word,
             candidates: ranked.slice(0, 5).map((c, i) => ({
-              word: c.word, tier1: c.score.toFixed(2), surprisal: surprisals[i]?.toFixed(2), combined: (c.score + lm.LM_WEIGHT * (surprisals[i] || 0)).toFixed(2)
+              word: c.word, tier1: c.score.toFixed(2), bert: bertScores[i]?.toFixed(4), combined: (c.score + bert.BERT_WEIGHT * (bertScores[i] || 0)).toFixed(2)
             })),
             winner: best?.word,
           }));

@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^3.6.0",
-    "@wllama/wllama": "^3.5.1",
     "dictionary-eu": "^4.0.0",
     "hunspell-asm": "^4.0.2",
     "nspell": "^2.1.5"
