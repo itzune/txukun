@@ -86,7 +86,7 @@ For Tier 3 grammar correction, Txukun uses a **GECToR** (edit-based grammatical 
 | Training data | 1M Elhuyar GEC pairs (grammar errors: verb agreement, case, tense, suffix) |
 | Usage | Edit-based correction ($KEEP/$DELETE/$REPLACE/$APPEND), iterative (up to 5 passes) |
 | Performance | F0.5 = 90.2, exact match 82.8%, false-positive 3.6% (at min_error_prob=0.5) |
-| License | CC-BY-NC-SA (Elhuyar training data) — see license section below |
+| License | CC-BY-NC-SA 4.0 (trained on Elhuyar GEC corpus) — see license section below |
 
 The model has **two heads** trained jointly, giving it two capabilities:
 
@@ -216,7 +216,7 @@ The BERTeus model (`ixa-ehu/berteus-base-cased`) is licensed under Apache 2.0 by
 
 The RoBERTa-eus-base model (`ixa-ehu/roberta-eus-euscrawl-base-cased`) is licensed under Apache 2.0.
 
-The GECToR grammar model was trained on the **Elhuyar GEC corpus**, which is licensed under **CC-BY-NC-SA**. This means the trained model weights may be subject to the non-commercial restriction of the training data. See the [CORRECTOR_STRATEGY.md](CORRECTOR_STRATEGY.md) Tier 3 section for details.
+The GECToR grammar model (`itzune/gector-eus-onnx`) is licensed under **CC-BY-NC-SA 4.0**. The model weights are a derivative work of the **Elhuyar GEC corpus** (CC-BY-NC-SA): under the ShareAlike clause, the weights inherit the same license. This means **no commercial use** of the GECToR model weights. See the [gector-eus README](https://github.com/itzune/gector-eus#license) for details.
 
 ---
 
