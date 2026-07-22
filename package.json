@@ -27,7 +27,7 @@
     "@lezer/markdown": "^1.7.2",
     "dictionary-eu": "^4.0.0",
     "hunspell-asm": "^4.0.2",
-    "idaztian": "^1.4.0",
+    "idaztian": "^1.4.1",
     "nspell": "^2.1.5"
   },
   "devDependencies": {
