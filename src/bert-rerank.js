@@ -54,10 +54,16 @@ const MAX_BERT_CANDIDATES = 5;
 // (~170 Basque subword tokens for 80 words), so this is safe.
 const CONTEXT_CHARS = 200;
 
-// Model paths (local, gitignored under public/models/)
+// Model source: HuggingFace Hub (models are too large for git/GitHub Pages).
+// The repo itzune/berteus-onnx contains: onnx/model_q4.onnx (85MB int4),
+// word_embeddings_f16.bin (74MB), tokenizer.json, config.json, etc.
+// For local testing, initBERT(modelDir) can override to a local path.
+const HF_REPO = 'itzune/berteus-onnx';
+const HF_BASE = `https://huggingface.co/${HF_REPO}/resolve/main`;
+
+// Local fallback path (used only when modelDir is passed, e.g. test page)
 const BASE = import.meta.env.BASE_URL || '/';
 const MODEL_DIR = `${BASE}models/berteus`;
-const EMB_PATH = `${MODEL_DIR}/word_embeddings_f16.bin`;
 
 // ── float16 → float32 conversion ────────────────────
 //
@@ -128,24 +134,27 @@ export async function initBERT(modelDir) {
   if (loadFailed) return null;
   if (loadingPromise) return loadingPromise;
 
+  const useLocal = !!modelDir;
   const dir = modelDir || MODEL_DIR;
 
   loadingPromise = (async () => {
-    // Configure Transformers.js for local model loading.
-    // allowLocalModels must be true (defaults to false in browser).
-    // We do NOT set allowRemoteModels=false — MarianMT (cap-punct) still
-    // needs remote access, and it loads before BERTeus anyway.
-    env.allowLocalModels = true;
-    env.localModelPath = `${BASE}models/`;
+    // Local mode (test page): configure Transformers.js for local files.
+    // Production: load from HuggingFace Hub (no env changes needed —
+    // Transformers.js defaults to allowRemoteModels=true in browser).
+    if (useLocal) {
+      env.allowLocalModels = true;
+      env.localModelPath = `${BASE}models/`;
+    }
 
     // Load model, tokenizer, and embeddings in parallel
     const [mdl, tok, emb] = await Promise.all([
-      AutoModel.from_pretrained('berteus', {
-        dtype: 'q4',
-        device: 'wasm',
-      }),
-      AutoTokenizer.from_pretrained('berteus'),
-      loadEmbeddings(dir),
+      useLocal
+        ? AutoModel.from_pretrained('berteus', { dtype: 'q4', device: 'wasm' })
+        : AutoModel.from_pretrained(HF_REPO, { dtype: 'q4', device: 'wasm' }),
+      useLocal
+        ? AutoTokenizer.from_pretrained('berteus')
+        : AutoTokenizer.from_pretrained(HF_REPO),
+      loadEmbeddings(dir, useLocal),
     ]);
 
     model = mdl;
@@ -165,9 +174,13 @@ export async function initBERT(modelDir) {
 
 /**
  * Load the float16 embedding matrix and convert to float32.
+ * In production, fetched from HuggingFace Hub. In local/test mode,
+ * fetched from the model directory.
  */
-async function loadEmbeddings(dir) {
-  const embPath = `${dir}/word_embeddings_f16.bin`;
+async function loadEmbeddings(dir, useLocal) {
+  const embPath = useLocal
+    ? `${dir}/word_embeddings_f16.bin`
+    : `${HF_BASE}/word_embeddings_f16.bin`;
   const response = await fetch(embPath);
   if (!response.ok) {
     throw new Error(`Failed to fetch embeddings: ${response.status}`);

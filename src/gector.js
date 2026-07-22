@@ -47,11 +47,15 @@ const MAX_ITERATIONS = 5;
 // from words (e.g., "kaixo," → "kaixo ,").
 const PUNCT_RE = /([.,;:!?()«»"'\-\u2013\u2014])/g;
 
-// Model paths (local, gitignored under public/models/)
+// Model source: HuggingFace Hub (models are too large for git/GitHub Pages).
+// The repo itzune/gector-eus-onnx contains: onnx/model_q4.onnx (85MB int4),
+// gector_vocab.json, tokenizer.json, sentencepiece.bpe.model, etc.
+const HF_REPO = 'itzune/gector-eus-onnx';
+const HF_BASE = `https://huggingface.co/${HF_REPO}/resolve/main`;
+
+// Local fallback paths (used only for local testing)
 const BASE = import.meta.env.BASE_URL || '/';
 const MODEL_DIR = `${BASE}models/gector`;
-const ONNX_PATH = `${MODEL_DIR}/onnx/model_q4.onnx`;
-const VOCAB_PATH = `${MODEL_DIR}/gector_vocab.json`;
 
 // ── Lazy loading ────────────────────────────────────
 
@@ -66,13 +70,13 @@ export async function initGector() {
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
-    env.allowLocalModels = true;
-    env.localModelPath = `${BASE}models/`;
-
+    // Load tokenizer, vocab, and ONNX model from HuggingFace Hub.
+    // No env.allowLocalModels needed — Transformers.js defaults to
+    // allowRemoteModels=true in browser, same as MarianMT (cap-punct).
     const [tok, voc, modelBuf] = await Promise.all([
-      AutoTokenizer.from_pretrained('gector'),
-      fetch(VOCAB_PATH).then(r => r.json()),
-      fetch(ONNX_PATH).then(r => r.arrayBuffer()),
+      AutoTokenizer.from_pretrained(HF_REPO),
+      fetch(`${HF_BASE}/gector_vocab.json`).then(r => r.json()),
+      fetch(`${HF_BASE}/onnx/model_q4.onnx`).then(r => r.arrayBuffer()),
     ]);
 
     tokenizer = tok;
