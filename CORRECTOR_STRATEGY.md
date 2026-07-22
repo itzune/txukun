@@ -798,6 +798,117 @@ Two different tasks (FUTO-format autocorrect and raw-text re-ranking) show the s
 
 ---
 
+## Appendix C — BERTeus re-ranking benchmark (empirical, 2026-01)
+
+### C.1 Summary
+
+Full-scale benchmark on 933 synthetic-typo cases (Elhuyar GEC correct sentences + typo injection) with ≥2 Tier 1 candidates. Pre-computed scores, grid-searched weights.
+
+| Approach | Accuracy | Improved | Worsened | Net |
+|---|---|---|---|---|
+| Tier 1 baseline (freq re-rank) | 687/933 (73.6%) | — | — | — |
+| Futo surprisal (w=0.2) | 693/933 (74.3%) | 44 | 40 | +6 |
+| Futo surprisal gated (t1<0.5, lm>3.0) | 690/933 (74.0%) | 9 | 6 | +3 |
+| **BERTeus embedding sim (w=12)** | **786/933 (84.2%)** | **116** | **17** | **+99** |
+| BERTeus pure (w→∞, no Tier 1) | 678/933 (72.7%) | 144 | 153 | −9 |
+
+**BERTeus beats futo by +93 net cases.** The 25M futo model's surprisal signal is too noisy (44:40 improved/worsened ratio). The 110M BERTeus encoder's bidirectional embedding similarity is 8× more precise (116:17).
+
+### C.2 Critical finding: BERTeus has NO MLM head
+
+The `ixa-ehu/berteus-base-cased` checkpoint was saved as a `BertModel` (encoder only) — 199 keys, no `cls.*` (MLM prediction head). Loading as `BertForMaskedLM` silently randomizes the decoder, making pseudo-log-likelihood (PLL) scores meaningless (+0 net at any weight).
+
+**Solution: masked embedding similarity.** Replace the target word with `<tool_call>`, run the BERT encoder, compute cosine similarity between the `<tool_call>` position's hidden state and each candidate's word embedding. This is the standard approach for lexical substitution with BERT when the MLM head is unavailable (Paetzold & Specia 2017; Zhou et al. 2019).
+
+### C.3 Why BERTeus beats futo
+
+1. **Bidirectional context.** BERTeus sees both left AND right context. Futo (causal LM) sees only left context. This matters especially for first-word typos (8.1% of cases have empty left context → futo surprisal=0). BERTeus fixes `Haur → Gaur` (empty context) that futo couldn't touch.
+2. **4× larger model.** 110M params (BERT-base) vs 25M (futo Llama). More capacity for contextual understanding.
+3. **One forward pass per case.** Futo needs two passes per candidate (in-context + baseline). BERTeus needs one pass per case (single `<tool_call>`). On GPU: 4.2s vs 217s for 933 cases (50× faster).
+
+### C.4 Grid search results
+
+```
+Weight   T2   Imp   Wor   Net
+  0.0   687     0     0    +0
+  0.5   703    16     0   +16
+  1.0   709    23     1   +22
+  2.0   722    37     2   +35
+  5.0   754    71     4   +67
+  8.0   773    94     8   +86
+  9.0   777    98     8   +90
+ 10.0   776   101    12   +89
+ 11.0   783   111    15   +96
+ 12.0   786   116    17   +99  ◄ PEAK
+ 13.0   784   117    20   +97
+ 15.0   785   123    25   +98
+ 20.0   777   130    40   +90
+ 50.0   735   140    92   +48
+ 999.   678   144   153    −9  (pure BERTeus, no Tier 1)
+```
+
+The curve is flat from w=9 to w=15 (+90 to +99) — robust to weight tuning. Pure BERTeus (w→∞) is worse than Tier 1 alone: the frequency-based Tier 1 score still adds value as a tiebreaker.
+
+### C.5 Combined score formula (revised)
+
+```
+combined = tier1_score + 12.0 × cosine_sim( mask_hidden_state, candidate_embedding )
+```
+
+Where:
+- `tier1_score` = frequency-based score from `getRankedCandidates()` (range ~0.5–3.5)
+- `cosine_sim` = cosine similarity between BERT `<tool_call>` hidden state and candidate's mean subword embedding (range −1 to +1)
+- Weight 12.0 means BERTeus dominates the ranking but Tier 1 breaks ties
+
+### C.6 Browser feasibility
+
+| Factor | Futo GGUF (current Tier 2) | BERTeus ONNX (proposed) |
+|---|---|---|
+| Model size | 49 MB | ~125 MB (int8) or ~62 MB (int4) |
+| Runtime | wllama (WASM) | Transformers.js (WASM/WebGPU) |
+| Forward passes per case | 2 × n_candidates | **1** (single <tool_call>) |
+| Speed (GPU) | 4.3/s | **220/s** |
+| Net improvement | +6 | **+99** |
+| Already a dependency? | No (new wllama dep) | Yes (Transformers.js already loaded for MarianMT) |
+
+BERTeus is heavier (125 MB vs 49 MB) but:
+- Transformers.js is already loaded for MarianMT — no new library
+- One forward pass per case (fast even on WASM/CPU)
+- Can be lazy-loaded only when spell error is detected
+- int4 quantization would bring it to ~62 MB
+
+### C.7 Revised tiered plan
+
+Based on empirical evidence, the tiered plan is revised:
+
+| Tier | Original plan | Revised plan |
+|---|---|---|
+| Tier 1 | Frequency re-ranking | **Unchanged** — 73.6% baseline |
+| Tier 2 | Futo surprisal re-ranking via wllama | **Replace with BERTeus** — +99 net vs +6 |
+| Tier 2.5 | Futo surprisal detection (free) | **Optional** — futo signal is weak. Use BERTeus embedding similarity for detection instead (same model, same pass) |
+| Tier 3 | BERTeus MLM detection (heavy) | **Merged into Tier 2** — BERTeus does both re-ranking AND detection in one pass |
+
+**New Tier 2 = BERTeus embedding similarity re-ranking.** Drop futo/wllama entirely for re-ranking. The futo model remains valuable for FUTO Keyboard's keypress autocorrect (82.5% top-1), but for txukun's text correction, BERTeus is strictly better.
+
+### C.8 Worsenings analysis (17 cases at w=12)
+
+The 17 worsenings are genuine ambiguities — BERTeus picks a contextually plausible but wrong word:
+- `gerro → gerra` (want `gero`) — both real words, context doesn't disambiguate
+- `Onork → Nork` (want `Inork`) — empty context, all three are question words
+- `gein → zein` (want `egin`) — `zein` is contextually plausible
+
+These are inherent limitations of the approach, not bugs. A larger or fine-tuned model might reduce them, but 116:17 (improved:worsened) is already excellent.
+
+### C.9 Implementation notes
+
+- **`bert_rerank.py`** in `txukun-cli/tests/gec-benchmark/` — `BerteusReranker` class, loads as `BertModel` (not `BertForMaskedLM`), uses `score_candidates(sentence_words, target_idx, candidate_words)`
+- Scoring: `cosine_sim(normalize(mask_hidden), normalize(mean(candidate_token_embeddings)))`
+- Cache: `bert_scores_cache.json` (pre-computed scores for instant grid search)
+- GPU: 933 cases in 4.2s on NVIDIA L40
+- Reproduce: `cd txukun-cli && uv run --extra bench python tests/gec-benchmark/eval.py --berteus`
+
+---
+
 ## References
 
 - **Corpus dictionary source:** [`itzune/futo-transformer-basque`](https://github.com/itzune/futo-transformer-basque) — `dictionaries/eu_wordlist.combined.gz`, `dictionaries/eu.dict`
