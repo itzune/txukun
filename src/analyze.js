@@ -8,10 +8,197 @@
  *
  * category: 'grammar' | 'spelling' | 'cappunct'
  *
- * All models run on the ORIGINAL text independently (Grammarly-style:
- * overlapping suggestions are resolved by position). Errors are sorted
- * by position and de-overlapped (earliest, then longest span wins).
+ * All models run on PLAIN TEXT (markdown stripped) so they never see
+ * syntax markers like #, **, [], etc. Error offsets are mapped back to
+ * raw-markdown positions for the editor. Errors are sorted by position
+ * and de-overlapped (earliest, then longest span wins).
  */
+
+// ── Markdown stripping with offset mapping ──────────────────────────
+//
+// Idaztian's getContent() returns raw markdown source. All three models
+// (MarianMT, GECToR, Hunspell) were trained on plain text, so we strip
+// markdown syntax before passing text to them, then map the resulting
+// error offsets back to markdown positions for the editor decorations.
+
+/**
+ * Strip markdown syntax markers from text, returning plain text + a
+ * position map so error offsets can be translated back to markdown.
+ *
+ * Strips: headings, bold, italic, strikethrough, inline code, links,
+ * images, blockquotes, list markers, horizontal rules, code fences.
+ *
+ * @param {string} md - Raw markdown source
+ * @returns {{ text: string, map: number[] }} plain text + map[plainIdx] = mdIdx
+ */
+function stripMarkdown(md) {
+  let plain = '';
+  const map = [];
+  let i = 0;
+  let inCodeBlock = false;
+  const len = md.length;
+
+  while (i < len) {
+    // ── Code fence: toggle state, skip entire line ──
+    if (md.startsWith('```', i)) {
+      inCodeBlock = !inCodeBlock;
+      const eol = md.indexOf('\n', i);
+      i = eol === -1 ? len : eol + 1;
+      continue;
+    }
+
+    // ── Inside code block: skip entire line ──
+    if (inCodeBlock) {
+      const eol = md.indexOf('\n', i);
+      i = eol === -1 ? len : eol + 1;
+      continue;
+    }
+
+    // ── Start of line: strip block-level markers ──
+    if (i === 0 || md[i - 1] === '\n') {
+      let j = i;
+
+      // Blockquote markers (> or >> ...)
+      let bq;
+      while ((bq = md.slice(j).match(/^>{1,}\s*/))) j += bq[0].length;
+
+      // Heading markers (# to ######)
+      const h = md.slice(j).match(/^#{1,6}\s+/);
+      if (h) j += h[0].length;
+
+      // List markers (- * + or 1.)
+      const l = md.slice(j).match(/^([-*+]\s+|\d+\.\s+)/);
+      if (l) j += l[0].length;
+
+      // Horizontal rule (entire line is --- / *** / ___)
+      const hr = md.slice(j).match(/^(-{3,}|\*{3,}|_{3,})\s*$/);
+      if (hr) {
+        const eol = md.indexOf('\n', j);
+        i = eol === -1 ? len : eol + 1;
+        continue;
+      }
+
+      i = j;
+    }
+
+    // ── Image ![alt](url) — skip entirely ──
+    if (md[i] === '!' && md[i + 1] === '[') {
+      const closeBracket = md.indexOf('](', i + 2);
+      if (closeBracket !== -1) {
+        const closeParen = md.indexOf(')', closeBracket + 2);
+        if (closeParen !== -1) {
+          i = closeParen + 1;
+          continue;
+        }
+      }
+    }
+
+    // ── Link [text](url) — keep text, drop URL ──
+    if (md[i] === '[') {
+      const closeBracket = md.indexOf('](', i + 1);
+      if (closeBracket !== -1) {
+        const closeParen = md.indexOf(')', closeBracket + 2);
+        if (closeParen !== -1) {
+          for (let k = i + 1; k < closeBracket; k++) {
+            plain += md[k];
+            map.push(k);
+          }
+          i = closeParen + 1;
+          continue;
+        }
+      }
+    }
+
+    // ── Inline code `text` — keep content ──
+    if (md[i] === '`') {
+      const end = md.indexOf('`', i + 1);
+      if (end !== -1) {
+        for (let k = i + 1; k < end; k++) {
+          plain += md[k];
+          map.push(k);
+        }
+        i = end + 1;
+        continue;
+      }
+    }
+
+    // ── Bold **text** or __text__ — keep content ──
+    if ((md[i] === '*' && md[i + 1] === '*') || (md[i] === '_' && md[i + 1] === '_')) {
+      const marker = md.slice(i, i + 2);
+      const end = md.indexOf(marker, i + 2);
+      if (end !== -1) {
+        for (let k = i + 2; k < end; k++) {
+          plain += md[k];
+          map.push(k);
+        }
+        i = end + 2;
+        continue;
+      }
+    }
+
+    // ── Strikethrough ~~text~~ — keep content ──
+    if (md[i] === '~' && md[i + 1] === '~') {
+      const end = md.indexOf('~~', i + 2);
+      if (end !== -1) {
+        for (let k = i + 2; k < end; k++) {
+          plain += md[k];
+          map.push(k);
+        }
+        i = end + 2;
+        continue;
+      }
+    }
+
+    // ── Italic *text* or _text_ — keep content ──
+    // (must come after bold/strikethrough; require non-space after opener)
+    if (
+      (md[i] === '*' || md[i] === '_') &&
+      md[i + 1] !== md[i] &&
+      md[i + 1] &&
+      md[i + 1] !== ' ' &&
+      md[i + 1] !== '\n'
+    ) {
+      const ch = md[i];
+      let end = i + 1;
+      while (end < len && !(md[end] === ch && md[end + 1] !== ch && md[end - 1] !== ch)) {
+        end++;
+      }
+      if (end < len) {
+        for (let k = i + 1; k < end; k++) {
+          plain += md[k];
+          map.push(k);
+        }
+        i = end + 1;
+        continue;
+      }
+    }
+
+    // ── Regular character ──
+    plain += md[i];
+    map.push(i);
+    i++;
+  }
+
+  return { text: plain, map };
+}
+
+/**
+ * Map a plain-text offset to a markdown offset.
+ * @param {number} plainOffset - offset in stripped text
+ * @param {number[]} map - map[plainIdx] = mdIdx
+ * @param {boolean} isEnd - true for exclusive end offset ("to")
+ * @returns {number} offset in original markdown
+ */
+function mapOffset(plainOffset, map, isEnd = false) {
+  if (map.length === 0) return plainOffset;
+  if (isEnd) {
+    if (plainOffset >= map.length) return map[map.length - 1] + 1;
+    if (plainOffset <= 0) return map[0];
+    return map[plainOffset - 1] + 1;
+  }
+  if (plainOffset >= map.length) return map[map.length - 1] + 1;
+  return map[Math.max(0, plainOffset)];
+}
 
 import { correctCapPunct, isModelReady, isSpellReady } from './models.js';
 import { checkSpelling } from './spell.js';
@@ -22,20 +209,34 @@ const nextId = () => `e${++errCounter}`;
 
 /**
  * Analyze the full text and return an array of error objects.
- * @param {string} text
+ *
+ * Markdown syntax is stripped before passing to models (they were
+ * trained on plain text). Error offsets are mapped back to raw-markdown
+ * positions so editor decorations land on the right characters.
+ *
+ * @param {string} mdText - raw markdown from the editor
  * @returns {Promise<Array>}
  */
-export async function analyzeText(text) {
-  if (!text || !text.trim()) return [];
+export async function analyzeText(mdText) {
+  if (!mdText || !mdText.trim()) return [];
 
-  // Run the three detectors in parallel (each degrades gracefully).
-  const [grammarErrors, spellingErrors, capPunctErrors] = await Promise.all([
-    detectGrammarErrors(text),
-    detectSpellingErrors(text),
-    detectCapPunctErrors(text),
-  ]);
+  // Strip markdown → plain text + offset map
+  const { text: plainText, map } = stripMarkdown(mdText);
+  if (!plainText.trim()) return [];
 
-  let all = [...grammarErrors, ...spellingErrors, ...capPunctErrors];
+  // Run the three detectors SEQUENTIALLY on plain text — ONNX Runtime
+  // Web (WASM) cannot execute multiple sessions concurrently.
+  const grammarErrors = await detectGrammarErrors(plainText);
+  const spellingErrors = await detectSpellingErrors(plainText);
+  const capPunctErrors = await detectCapPunctErrors(plainText);
+
+  // Map offsets from plain text → markdown
+  let all = [...grammarErrors, ...spellingErrors, ...capPunctErrors].map((e) => ({
+    ...e,
+    from: mapOffset(e.from, map, false),
+    to: mapOffset(e.to, map, true),
+  }));
+
   // Sort by position; longer spans first when tied
   all.sort((a, b) => a.from - b.from || (b.to - b.from) - (a.to - a.from));
   // Remove overlaps (keep earliest, then longest)
@@ -202,6 +403,18 @@ function diffWords(originalText, correctedText) {
     j = 0;
   while (i < n && j < mm) {
     if (aWords[i].t.text.toLowerCase() === bWords[j].t.text.toLowerCase()) {
+      // Words match case-insensitively. If the actual text differs
+      // (e.g. "nire" → "Nire"), emit a replace so case-only changes
+      // are not silently dropped.
+      if (aWords[i].t.text !== bWords[j].t.text) {
+        changes.push({
+          type: 'replace',
+          fromText: aWords[i].t.text,
+          toText: bWords[j].t.text,
+          fromOffset: aWords[i].t.from,
+          toOffset: aWords[i].t.to,
+        });
+      }
       i++;
       j++;
     } else if (dp[i + 1][j] >= dp[i][j + 1]) {
@@ -287,14 +500,20 @@ function dedupeOverlaps(errors) {
 // the editor to highlight suspect words even before the user runs a full
 // analysis (or to supplement the suggestion cards).
 
-export async function detectHeatmap(text) {
+export async function detectHeatmap(mdText) {
   try {
     if (!isGectorReady()) {
       await initGector();
       if (!isGectorReady()) return [];
     }
-    const { detections } = await detectGrammar(text);
-    return detections || [];
+    const { text: plainText, map } = stripMarkdown(mdText);
+    if (!plainText.trim()) return [];
+    const { detections } = await detectGrammar(plainText);
+    return (detections || []).map((d) => ({
+      ...d,
+      start: mapOffset(d.start, map, false),
+      end: mapOffset(d.end, map, true),
+    }));
   } catch (err) {
     console.warn('[analyze] heatmap detection failed:', err);
     return [];
