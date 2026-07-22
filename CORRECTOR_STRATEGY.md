@@ -910,7 +910,7 @@ Based on empirical evidence, the tiered plan is revised:
 | Tier 2.5 | Futo surprisal detection (free) | **Optional** — futo signal is weak. Use BERTeus embedding similarity for detection instead (same model, same pass) |
 | Tier 3 | BERTeus MLM detection (heavy) | **Merged into Tier 2** — BERTeus does both re-ranking AND detection in one pass |
 
-**New Tier 2 = BERTeus embedding similarity re-ranking.** Drop futo/wllama entirely for re-ranking. The futo model remains valuable for FUTO Keyboard's keypress autocorrect (82.5% top-1), but for txukun's text correction, BERTeus is strictly better.
+**New Tier 2 = BERTeus embedding similarity re-ranking.** ✅ **IMPLEMENTED** in `src/bert-rerank.js` (commit `1c9cc99`). Drop futo/wllama entirely for re-ranking. The futo model remains valuable for FUTO Keyboard's keypress autocorrect (82.5% top-1), but for txukun's text correction, BERTeus is strictly better.
 
 ### C.8 Worsenings analysis (17 cases at w=12)
 
@@ -923,11 +923,23 @@ These are inherent limitations of the approach, not bugs. A larger or fine-tuned
 
 ### C.9 Implementation notes
 
-- **`bert_rerank.py`** in `txukun-cli/tests/gec-benchmark/` — `BerteusReranker` class, loads as `BertModel` (not `BertForMaskedLM`), uses `score_candidates(sentence_words, target_idx, candidate_words)`
+**Python benchmark** (`txukun-cli/tests/gec-benchmark/`):
+- `bert_rerank.py` — `BerteusReranker` class, loads as `BertModel` (not `BertForMaskedLM`), uses `score_candidates(sentence_words, target_idx, candidate_words)`
 - Scoring: `cosine_sim(normalize(mask_hidden), normalize(mean(candidate_token_embeddings)))`
 - Cache: `bert_scores_cache.json` (pre-computed scores for instant grid search)
 - GPU: 933 cases in 4.2s on NVIDIA L40
 - Reproduce: `cd txukun-cli && uv run --extra bench python tests/gec-benchmark/eval.py --berteus`
+
+**Browser integration** (`txukun/src/bert-rerank.js`):
+- `initBERT()` — lazy-loads ONNX model (119MB int8) + embedding matrix (74MB f16) via Transformers.js
+- `bertRerank(text, errorStart, errorEnd, candidates)` — masks misspelled word in context, runs single BERT forward pass, scores all candidates by cosine similarity
+- `BERT_WEIGHT = 15.0` (grid search peak for int8 ONNX)
+- Transformers.js returns `BigInt64Array` for `input_ids` — must `Array.from(...).map(Number)`
+- Float16 embeddings converted via bit manipulation (no DataStream dependency)
+- `env.allowLocalModels = true` required (defaults to false in browser); `allowRemoteModels` left at default (true) so MarianMT can still load from HF Hub
+- E2E validated: `dure` → `dute` correctly re-ranked over `zure` (tied Tier 1 score, BERTeus broke tie)
+- Model files: `public/models/berteus/` (gitignored, 193MB total)
+- `@wllama/wllama` dependency removed; `@huggingface/transformers` reused (already loaded for MarianMT)
 
 ---
 
