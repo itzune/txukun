@@ -860,22 +860,44 @@ Where:
 - `cosine_sim` = cosine similarity between BERT `<tool_call>` hidden state and candidate's mean subword embedding (range −1 to +1)
 - Weight 12.0 means BERTeus dominates the ranking but Tier 1 breaks ties
 
-### C.6 Browser feasibility
+### C.6 Browser feasibility (VALIDATED)
 
-| Factor | Futo GGUF (current Tier 2) | BERTeus ONNX (proposed) |
+| Factor | Futo GGUF (current Tier 2) | BERTeus ONNX (validated) |
 |---|---|---|
-| Model size | 49 MB | ~125 MB (int8) or ~62 MB (int4) |
-| Runtime | wllama (WASM) | Transformers.js (WASM/WebGPU) |
+| Model size | 49 MB | 119 MB (int8) + 74 MB (f16 embeddings) = **193 MB** |
+| Runtime | wllama (WASM) | Transformers.js (WASM) |
 | Forward passes per case | 2 × n_candidates | **1** (single <tool_call>) |
 | Speed (GPU) | 4.3/s | **220/s** |
-| Net improvement | +6 | **+99** |
+| Net improvement | +6 | **+99** (PyTorch) / **+105** (int8 ONNX) |
 | Already a dependency? | No (new wllama dep) | Yes (Transformers.js already loaded for MarianMT) |
 
-BERTeus is heavier (125 MB vs 49 MB) but:
-- Transformers.js is already loaded for MarianMT — no new library
-- One forward pass per case (fast even on WASM/CPU)
-- Can be lazy-loaded only when spell error is detected
-- int4 quantization would bring it to ~62 MB
+**Browser validation results** (`berteus-test.html`, 30 test cases via headless Playwright):
+
+| Metric | Value |
+|---|---|
+| Model load time | 3.1s |
+| Embeddings load (74MB f16) | 0.9s (fetch 0.3s + f16→f32 0.3s) |
+| 30 cases inference | ~2s |
+| T2 browser correct | 22/30 (73.3%) |
+| T2 python correct | 23/30 (76.7%) |
+| Match Python ranking | **29/30 (96.7%)** |
+| Max score diff | 0.128 |
+| Mean score diff | 0.013 |
+
+**Browser BERTeus is validated.** 29/30 cases match Python's ranking exactly. The one discrepancy is an int8 quantization boundary case. Mean score difference is 0.013 (noise from int8 model + float16 embeddings).
+
+Files deployed to `public/models/berteus/`:
+- `onnx/model_quantized.onnx` (119MB, int8)
+- `word_embeddings_f16.bin` (74MB, float16 embedding matrix)
+- `tokenizer.json`, `config.json`, `vocab.txt`
+- `browser_test_cases.json` (30 test cases with Python reference scores)
+
+Key implementation details for browser:
+- `env.allowLocalModels = true; env.allowRemoteModels = false; env.localModelPath = BASE + 'models/'`
+- `AutoModel.from_pretrained('berteus', { dtype: 'q8', device: 'wasm' })`
+- Transformers.js returns `BigInt64Array` for `input_ids` — must `Array.from(...).map(Number)`
+- Float16 embeddings converted via bit manipulation (no DataStream dependency)
+- Scoring: `tier1_score + 15 × cosine_sim(normalize(mask_hidden), normalize(mean(candidate_embeddings)))`
 
 ### C.7 Revised tiered plan
 
