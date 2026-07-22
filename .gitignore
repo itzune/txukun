@@ -8,3 +8,4 @@ src/vendor/
 
 # LM model (49MB GGUF, built by futo-transformer-basque/scripts/package/patch_gguf_bos.py)
 public/models/
+test-results/

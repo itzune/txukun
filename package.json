@@ -15,9 +15,13 @@
     "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.1",
+    "@codemirror/view": "^6.43.6",
     "@huggingface/transformers": "^3.6.0",
     "dictionary-eu": "^4.0.0",
     "hunspell-asm": "^4.0.2",
+    "idaztian": "file:../../xezpeleta/Idaztian/packages/idaztian",
     "nspell": "^2.1.5"
   },
   "devDependencies": {
