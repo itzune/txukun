@@ -141,15 +141,6 @@ async function onAnalyze() {
 
     const errors = await analyzeText(text);
 
-    // Add context snippets (±18 chars) for the cards
-    for (const e of errors) {
-      const ctxStart = Math.max(0, e.from - 18);
-      const ctxEnd = Math.min(text.length, e.to + 18);
-      let ctx = text.slice(ctxStart, e.from);
-      if (ctxStart > 0) ctx = '…' + ctx;
-      e.context = ctx.trim();
-    }
-
     setErrors(errors);
     renderCards(errors);
 

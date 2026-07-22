@@ -200,6 +200,23 @@ function mapOffset(plainOffset, map, isEnd = false) {
   return map[Math.max(0, plainOffset)];
 }
 
+/**
+ * Build a leading-context snippet for a card: a few words before the
+ * error, bounded by the current paragraph (newline). Returns empty
+ * string if the error is at the start of its paragraph.
+ *
+ * @param {string} plainText - stripped plain text
+ * @param {number} from - error start offset (in plain text)
+ * @returns {string}
+ */
+function buildContext(plainText, from) {
+  const paraStart = plainText.lastIndexOf('\n', from - 1) + 1;
+  const ctxStart = Math.max(paraStart, from - 28);
+  let ctx = plainText.slice(ctxStart, from);
+  if (ctxStart > paraStart) ctx = '\u2026' + ctx;
+  return ctx.trimEnd();
+}
+
 import { correctCapPunct, isModelReady, isSpellReady } from './models.js';
 import { checkSpelling } from './spell.js';
 import { correctGrammar, detectGrammar, isGectorReady, initGector } from './gector.js';
@@ -230,8 +247,16 @@ export async function analyzeText(mdText) {
   const spellingErrors = await detectSpellingErrors(plainText);
   const capPunctErrors = await detectCapPunctErrors(plainText);
 
+  // Build context snippets (in plain text, paragraph-bounded) BEFORE
+  // mapping offsets to markdown. This keeps context clean (no markdown
+  // markers) and prevents bleeding across paragraph boundaries.
+  const allPlain = [...grammarErrors, ...spellingErrors, ...capPunctErrors];
+  for (const e of allPlain) {
+    e.context = buildContext(plainText, e.from);
+  }
+
   // Map offsets from plain text → markdown
-  let all = [...grammarErrors, ...spellingErrors, ...capPunctErrors].map((e) => ({
+  let all = allPlain.map((e) => ({
     ...e,
     from: mapOffset(e.from, map, false),
     to: mapOffset(e.to, map, true),
