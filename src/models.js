@@ -111,7 +111,62 @@ function constrainCapPunct(inputLine, outputLine) {
 }
 
 /**
- * Run MarianMT cap-punct correction on the full text (line by line).
+ * Split text into sentence-length segments for the cap-punct model.
+ *
+ * The MarianMT model was trained on individual sentences (9.7M sentences).
+ * Passing a multi-sentence paragraph causes it to treat the whole thing
+ * as one sentence — only one period at the end, no mid-paragraph caps.
+ *
+ * Strategy:
+ *  1. Split on newlines (hard breaks).
+ *  2. Within each line, split on existing sentence-ending punctuation
+ *     (`.`, `?`, `!`) followed by whitespace.
+ *  3. For long unpunctuated segments (>25 words), split by word count
+ *     as a fallback so the model doesn't receive an over-long input.
+ *
+ * Returns an array of { text, sep } where `sep` is the separator to
+ * rejoin with ('\n', '. ', ' ' etc.).
+ */
+function splitIntoSegments(text) {
+  const segments = [];
+  const lines = text.split(/\n/);
+  for (let li = 0; li < lines.length; li++) {
+    const line = lines[li];
+    if (!line.trim()) {
+      segments.push({ text: '', sep: '\n' });
+      continue;
+    }
+    // Split on sentence-ending punctuation followed by whitespace
+    const sentenceEnds = line.split(/(?<=[.?!])\s+/);
+    for (const sent of sentenceEnds) {
+      const trimmed = sent.trim();
+      if (!trimmed) continue;
+      const wordCount = trimmed.split(/\s+/).length;
+      if (wordCount > 25) {
+        // Long unpunctuated segment — split by word count
+        const words = trimmed.split(/\s+/);
+        for (let i = 0; i < words.length; i += 20) {
+          const chunk = words.slice(i, i + 20).join(' ');
+          segments.push({
+            text: chunk,
+            sep: i + 20 >= words.length ? (li < lines.length - 1 ? '\n' : '') : ' ',
+          });
+        }
+      } else {
+        segments.push({
+          text: trimmed,
+          sep: li < lines.length - 1 ? '\n' : '',
+        });
+      }
+    }
+  }
+  return segments;
+}
+
+/**
+ * Run MarianMT cap-punct correction on the full text.
+ * Splits into sentence-length segments first (the model was trained on
+ * individual sentences, not paragraphs).
  * Returns the corrected text with only case/punctuation changes applied.
  * @param {string} text
  * @returns {Promise<string>}
@@ -119,15 +174,19 @@ function constrainCapPunct(inputLine, outputLine) {
 export async function correctCapPunct(text) {
   if (!modelLoaded || !correctorPipeline) return text;
 
-  const lines = text.split('\n').filter((l) => l.trim());
+  const segments = splitIntoSegments(text);
   const results = [];
-  for (const line of lines) {
-    const out = await correctorPipeline(line);
-    let corrected = out[0]?.translation_text || line;
+  for (const seg of segments) {
+    if (!seg.text) {
+      results.push({ text: '', sep: seg.sep });
+      continue;
+    }
+    const out = await correctorPipeline(seg.text);
+    let corrected = out[0]?.translation_text || seg.text;
     corrected = corrected
       .replace(/<\/?s>/g, '').replace(/<pad>/g, '').replace(/<unk>/g, '')
       .replace(/\s{2,}/g, ' ').trim();
-    results.push(constrainCapPunct(line, corrected) || line);
+    results.push({ text: constrainCapPunct(seg.text, corrected) || seg.text, sep: seg.sep });
   }
-  return results.join('\n');
+  return results.map((r) => r.text + r.sep).join('').trimEnd();
 }
