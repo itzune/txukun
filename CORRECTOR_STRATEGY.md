@@ -2,57 +2,48 @@
 
 > Architecture document for upgrading txukun's autocorrect from a static Hunspell-first lookup to a multi-signal neural re-ranker. This is the design spec for Phase 2 spell-correction work.
 
-**Status:** Proposed (Tier 1 implemented, Tier 2 in progress, Tiers 2.5–4 proposed)
-**Date:** 2026-06-29 (updated 2026-06-30)
+**Status:** Tier 1 + Tier 2 implemented. Tier 2.5 (real-word detection) + Tier 3 (grammar corrector) proposed below.
+**Date:** 2026-06-29 (updated 2026-07-22)
 **Related:** [`XUXEN_ISSUES.md`](./XUXEN_ISSUES.md), [`RESEARCH.md`](./RESEARCH.md), [`PROGRESS_REPORT_2026-06-28.md`](./PROGRESS_REPORT_2026-06-28.md), [`GEC_RESEARCH_2025.md`](./GEC_RESEARCH_2025.md)
 
 ---
 
 ## TL;DR
 
-Txukun's current autocorrect is broken at the architectural level: it puts the **worst** detector (Hunspell) **first and alone**, then blindly accepts that detector's first suggestion with zero context awareness. This causes documented bugs like `batzutan → batsutan` (wrong) when the correct word `batzuetan` is sitting right there in the dictionary.
+Txukun's current autocorrect handles **spelling (non-word) errors** well: dictionary detection → edit-distance candidates → BERTeus neural re-ranking (85.5% accuracy). But it has two **gaps**: it cannot detect **real-word errors** (a valid word in the wrong context — grammar, morphology, confusable pairs) and it cannot **correct grammar** (changing inflection, agreement, case).
 
-The fix is a **noisy-channel candidate re-ranker** that gives each job to the component that does it well:
+The two gaps, and their solutions:
+
+| Gap | What's missed | Solution | Cost |
+|---|---|---|---|
+| **Real-word / semantic** (axis 2 detection) | `etxea` vs `etxera`, `dio` vs `zaio` — all valid words | **Tier 2.5:** BERTeus detection on every in-dictionary word (model already loaded) | Free (new code, no new model) |
+| **Grammar correction** (axis 3) | Systematic grammar errors needing inflection changes | **Tier 3:** Fine-tune seq2seq on Elhuyar 9.3M GEC pairs | New model + training (1–2 weeks) |
+
+The current architecture (what's built):
 
 ```
                          ┌──────────────────────────────────────────┐
-  input text ───────────▶│ 1. DETECTION (layered)                    │
-                         │    1a. corpus dict (791k Set, O(1))      │
-                         │        word ∈ dict? → real word (ax 1)   │
-                         │    1b. futo surprisal [Tier 2.5, free]   │
-                         │        logP(w|ctx)−logP(w) > τ? → flag   │
-                         │    1c. BERTeus MLM [Tier 3, heavy]       │
-                         │        bidirectional, for hard cases     │
+  input text ───────────▶│ 1. DETECTION (dictionary only)            │
+                         │    corpus dict (791k Set, O(1))           │
+                         │    word ∈ dict? → pass (ax 1)            │
+                         │    word ∉ dict? → flag as spelling error │
+                         │    ⚠ GAP: real-word errors pass unseen    │
                          └──────────────┬───────────────────────────┘
-                                        │ misspelled OR surprising
+                                        │ flagged words only
                          ┌──────────────▼───────────────────────────┐
-                         │ 2. CANDIDATES (pure JS)                   │
-                         │    edit-distance 1/2 → filter by Set      │
-                         │    → only real words                      │
+                         │ 2. CANDIDATES (edit-distance ∩ wordlist)  │
                          └──────────────┬───────────────────────────┘
                                         │ N candidates
-              ┌─────────────────────────┼─────────────────────────┐
-              ▼                         ▼                         ▼
-   ┌──────────────────┐    ┌──────────────────────┐   ┌───────────────────┐
-   │ a) GGUF LM       │    │ b) Corpus frequency  │   │ c) Xuxen bonus    │
-   │  surprisal(c|ctx)│    │  log f(c)            │   │  +γ if c ∈ Xuxen  │
-   │  = logP(c|ctx)   │    │  (axis 1)            │   │  (axis 3, +only)  │
-   │     − logP(c)    │    │                      │   │                   │
-   │  via wllama      │    │                      │   │                   │
-   │  (axis 2)        │    │                      │   │                   │
-   └────────┬─────────┘    └──────────┬───────────┘   └─────────┬─────────┘
-            └─────────────────────────┼─────────────────────────┘
-                                      ▼
-                         ┌────────────────────────────┐
-                         │ 3. RANK: α·a + β·b + γ·c   │
-                         │    + δ·editdist(typed,c)   │
-                         │    → best candidate        │
-                         └────────────┬───────────────┘
-                                      ▼
-                         4. MarianMT cap-punct (existing, unchanged)
+                         ┌──────────────▼───────────────────────────┐
+                         │ 3. RE-RANK: tier1_score + 18·BERT_sim    │
+                         │    BERTeus int4 (85MB, lazy-loaded)       │
+                         │    ✅ 85.5% accuracy (+110 net)            │
+                         └──────────────┬───────────────────────────┘
+                                        ▼
+                         4. MarianMT cap-punct (constrainCapPunct guard)
 ```
 
-Each component owns one axis of "correct." No single source is asked to do a job it's bad at.
+**Tier 2.5** adds a detection pass (step 1b) using the same BERTeus model. **Tier 3** adds a grammar correction pass (step 5) using a new seq2seq model.
 
 ---
 
@@ -227,34 +218,29 @@ The Xuxen term `γ` is **added when the candidate IS in Xuxen**, never subtracte
 
 This makes Xuxen a **high-precision positive signal**, which is the only role its asymmetric coverage supports.
 
-### 3.4 BERTeus — bidirectional detection (axis 2, detection only)
+### 3.4 BERTeus — bidirectional context model (axes 2 & 3, re-ranking + detection)
 
-**Source:** [`ixa-ehu/berteus-base-cased`](https://huggingface.co/ixa-ehu/berteus-base-cased) on HuggingFace (498 MB safetensors, ~110M params)
+**Source:** [`ixa-ehu/berteus-base-cased`](https://huggingface.co/ixa-ehu/berteus-base-cased) — ONNX conversion at [`itzune/berteus-onnx`](https://huggingface.co/itzune/berteus-onnx) (85 MB int4 + 74 MB f16 embeddings)
 
-A Basque BERT model trained on 224.6M tokens of Basque news + Wikipedia. Bidirectional (sees context on both sides). Used by Mendez (2023) for grammatical error *detection* (GED) — the binary "is this sentence grammatical?" task.
+A Basque BERT model trained on 224.6M tokens of Basque news + Wikipedia. Bidirectional (sees context on both sides). Used by Mendez (2023) for grammatical error *detection* (GED).
 
-**Why it fills a gap the futo LM can't:**
-- **Bidirectional**: BERT processes the full sentence in both directions. The futo LM is causal (left context only). For errors where the disambiguating signal is in the *following* words, BERT sees it; the futo LM doesn't.
-- **Token-understanding specialist**: BERT is trained on the masked-LM objective (predict the hidden token from surrounding context) — this is exactly the "is this the right word here?" question. The futo LM is trained on next-token prediction — a related but different signal.
+**Why it beats causal LMs for contextual tasks:**
+- **Bidirectional**: BERT processes the full sentence in both directions. For errors where the disambiguating signal is in the *following* words, BERT sees it; causal LMs don't.
+- **Token-understanding specialist**: BERT is trained on the masked-LM objective (predict the hidden token from surrounding context) — exactly the "is this the right word here?" question.
 - **110M params** (vs futo's 25M): more capacity for fine-grained grammaticality judgments.
 
-**The costs:**
+**Current status:** ✅ **DEPLOYED** for re-ranking (Tier 2). The int4 ONNX model (85 MB) is lazy-loaded via Transformers.js in `src/bert-rerank.js`. On the 933-case spelling benchmark it improves accuracy from 73.6% → 85.5% (+110 net corrections). See Appendix C.
 
-| Factor | BERTeus | Our futo model |
-|--------|---------|----------------|
-| Architecture | BERT (encoder, bidirectional) | Llama (decoder, causal) |
-| Params | ~110M | ~25M |
-| Model size (raw) | 498 MB (safetensors) | 49 MB (GGUF) |
-| Model size (quantized ONNX int8) | **~125 MB** | N/A (already GGUF) |
-| ONNX version exists? | ❌ No (need to convert) | N/A |
-| GED fine-tune published? | ❌ No (only base model) | N/A |
-| Runtime | Transformers.js | wllama |
+**Critical limitation — no MLM head:** The BERTeus checkpoint was saved as `BertModel` (encoder only). It does NOT include the masked LM prediction head (`cls.*` weights). This means `BertForMaskedLM` produces random outputs. We use **masked embedding similarity** instead (Paetzold & Specia 2017): mask the target position, run the encoder, compute cosine similarity between the `[MASK]` hidden state and candidate word embeddings. This works for both re-ranking (Tier 2, done) and detection (Tier 2.5, spec below).
 
-**Detection method (raw MLM, no fine-tune needed):** Run BERTeus on the full sentence. For each token, compare the model's top-k MLM predictions at that position against the actual word. If the actual word is not in the top-k and the model's confidence is high for a different word → flag as potential error. One forward pass per sentence (not per word).
+**Two roles, one model, one forward pass:**
 
-**Candidate generation (bonus):** When a word is flagged, mask it and take BERT's top-k predictions as contextually-motivated candidates — these complement edit-distance candidates by including words that are contextually likely but not spelling-similar.
+| Role | What it does | Status |
+|---|---|---|
+| **Re-ranking** (Tier 2) | Given candidates, score each by cosine sim to `[MASK]` hidden state | ✅ Done (+110 net) |
+| **Detection** (Tier 2.5) | For each in-dictionary word, check if the actual word is the model's top prediction at that position | ⏳ Spec below |
 
-**In txukun:** only loaded if Tier 2.5 (futo surprisal detection) proves insufficient. Transformers.js is already a dependency (used for MarianMT), so no new library — just a new model. 125 MB extra download is heavy but txukun already loads MarianMT (77 MB) + futo GGUF (49 MB), so total would be ~251 MB. Consider lazy-loading BERTeus only when Tier 2.5 detection confidence is low.
+The key insight for Tier 2.5: **detection and candidate generation are the same operation.** When you mask a word and compute the `[MASK]` hidden state, you can (a) check if the actual word is the nearest embedding (detection), and (b) retrieve the top-k nearest embeddings as candidates (generation) — in one pass. See Tier 2.5 below.
 
 ---
 
@@ -326,40 +312,104 @@ Add the GGUF LM for the ambiguous cases the frequency tie-break can't resolve.
 
 **Deliverable:** Full neural re-ranking. The architecture from the diagram in §0.
 
-### Tier 2.5 — Futo surprisal detection (free, no new model, ~1 day)
+### Tier 2.5 — BERTeus real-word detection (no new model)
 
-**The problem:** Tier 2 only re-ranks candidates when the dictionary flags a word as misspelled. Real-word errors (a valid word used in the wrong context, like `izaki` where `iñaki` was meant) pass detection unchecked — the dictionary says "valid word" and the LM re-ranker never runs.
+**The problem:** Tier 2 only re-ranks candidates when the dictionary flags a word as misspelled (a non-word). Real-word errors — a valid dictionary word used in the wrong context — pass detection unchecked. The dictionary says "valid word" and BERTeus never gets a chance to run.
 
-**The fix:** Use the already-loaded futo LM to compute surprisal for every word, even in-dictionary ones. If a word's surprisal `log P(word | context) − log P(word)` exceeds a threshold → flag as potential real-word error → generate candidates → re-rank (Tier 2).
+This covers two error classes:
+1. **Confusable pairs** — typo produces a different real word (e.g. `bait` typed for `bai`)
+2. **Grammar/morphology errors** — wrong inflection, all of which are valid words (e.g. `etxea` vs `etxera`, `dio` vs `zaio`)
 
-**Why it's free:** The LM is already loaded for Tier 2 re-ranking. Detection needs only the in-context pass (`log P(word | context)`) — one forward pass per word, no baseline pass needed (we're looking for anomalously low-probability words, not comparing candidates). The surprisal threshold can be tuned against the evaluation benchmark.
+The Elhuyar GEC evaluation set confirms this is the dominant error type: of 250 manually-revised single-error sentences, the breakdown is R2 (verb agreement, 118), R4 (suffix, 71), R3 (case, 25), R1 (tense, 7) — **all real-word errors**, 0% detectable by dictionary.
 
-**Limitation:** Causal (left context only). 25M params. Catches easy real-word errors but misses cases where the disambiguating signal is in the *following* words. This is where Tier 3 (BERTeus) earns its keep.
+**The fix:** Use the already-loaded BERTeus model to check every in-dictionary content word, not just flagged ones. The mechanism is the **same masked embedding similarity** already used for re-ranking:
+
+```
+For each content word w at position i in the sentence:
+  1. Replace w with <tool_call>, run BERT encoder (one forward pass)
+  2. Extract <tool_call> hidden state (768-dim) — the context's "prediction"
+  3. Compute cosine sim between <tool_call> hidden state and w's static embedding → sim_actual
+  4. Compute cosine sim against ALL 50k embeddings (one matmul) → find top-k nearest → sim_best
+  5. If sim_best − sim_actual > MARGIN  AND  actual word ≠ top-1 word:
+       → flag w as a real-word error
+       → top-k nearest words (excluding w) become the correction candidates
+```
+
+**Why this is elegant:** Detection, candidate generation, and re-ranking collapse into one operation. The `<tool_call>` hidden state tells you both "is this word wrong?" (detection) and "what should it be?" (candidates + ranking). No edit-distance candidate generation needed for real-word errors — the model proposes contextually-motivated corrections directly.
+
+**Why it's free:** BERTeus is already loaded for Tier 2 re-ranking. No new model, no new download, no new dependency. The only cost is compute: one BERT forward pass per content word checked.
+
+**Cost analysis (int4 ONNX, WASM):**
+- ~100ms per forward pass (single <tool_call> position, ~20-token sentence)
+- A typical 15-word sentence has ~8 content words → ~0.8s
+- Acceptable for button-click correction; too slow for real-time typing
+- Optimization: skip function words (determiners, short words <4 chars), skip proper nouns (ALLCAPS already skipped). Only check words that PASSED the dictionary (non-words already handled by Tier 1/2).
 
 **Scope:**
-- Add a detection pass in `autoCorrect()` before the dictionary check: compute `log P(word | leftContext)` for each word via wllama
-- If surprisal > threshold AND word is in dictionary (would otherwise be skipped) → generate edit-distance candidates → proceed to Tier 2 re-ranking
-- Tune the threshold against the evaluation benchmark ([`GEC_RESEARCH_2025.md`](./GEC_RESEARCH_2025.md) §4)
-- Non-dictionary words still go through the existing Tier 1/2 path (no change)
+1. **Python prototype** (txukun-cli, `tests/gec-benchmark/detect.py`):
+   - `detect_real_word_errors(sentence_words)` → list of `{word, position, candidates, sim_actual, sim_best}`
+   - Evaluate against Elhuyar Dem_single (250 errors) + Dem_none (201 clean) → precision, recall, F1
+   - Tune MARGIN threshold (grid search 0.05–0.50)
+   - Current baseline: 0% recall (dictionary detects none)
+2. **Browser integration** (txukun, `src/bert-rerank.js`):
+   - Add `detectErrors(text)` — runs after `checkSpelling()`, before `autoCorrect()`
+   - Only runs on words that passed the dictionary check (not already flagged)
+   - Flagged words feed into the existing `autoCorrect()` candidate pipeline
+   - Combined errors (dictionary + BERTeus) are de-duplicated by position
+3. **UI:** Flagged real-word errors get a different highlight color (amber) vs spelling errors (red), so users understand the correction is contextual, not lexical.
 
-**Deliverable:** Catches real-word errors like `izaki → iñaki` using the model already deployed. Zero new dependencies, zero new download.
+**Evaluation targets:**
+- Dem_single recall > 40% (catching nearly half of grammar errors the dictionary can't see)
+- Dem_none precision > 85% (low false-positive rate on clean text)
+- If recall < 20% or precision < 70%, the base BERTeus signal is too weak → consider fine-tuning a GED classifier head (Tier 3 prerequisite)
 
-### Tier 3 — BERTeus bidirectional detection (~1-2 weeks)
+**Deliverable:** Detects real-word and grammar errors using the model already deployed. Zero new dependencies, zero new download. Closes the lexical/contextual gap (axis 2) for the common case.
 
-Add BERTeus (Basque BERT, 110M) for contextual detection when the futo LM's causal signal is insufficient. See §3.4 for model details and costs.
+### Tier 3 — Grammar corrector (new seq2seq model, separate workstream)
 
-**Scope:**
-- Convert BERTeus PyTorch → ONNX int8 (~125 MB) — `optimum-export-cli` or `torch.onnx.export`
-- Create `src/detection.js` (Transformers.js wrapper, mirrors existing MarianMT pattern in `src/main.js`)
-- Add MLM-based detection: run BERTeus on full sentence, flag tokens where actual word ∉ top-k predictions
-- Optional: use BERTeus masked predictions as additional candidates (contextually-motivated, not just spelling-similar)
-- Lazy-load only when Tier 2.5 detection confidence is low (threshold of a threshold)
+**The problem Tier 2.5 can't solve:** BERTeus detection flags *which* word is wrong, but for grammar errors the correction often requires changing inflection in a way that embedding similarity can't reliably propose. `etxea`→`etxera` (absolutive→allative) are different words but nearby in embedding space; `dio`→`zaio` (transitive→dative) may not be nearby at all. For systematic grammar correction, a model trained explicitly on error→correct pairs is needed.
 
-**Deliverable:** Bidirectional contextual detection. Catches the hard real-word errors and grammar errors that causal futo surprisal misses. The heavy option — only justified if Tier 2.5's accuracy on the evaluation benchmark is insufficient.
+**The approach:** Fine-tune a seq2seq model on the Elhuyar GEC dataset (9.3M error→correct pairs). This is the SOTA approach for low-resource GEC (Zarma 2024) and the method used by Elhuyar themselves (Beloki et al. 2020).
 
-### Tier 4 — Full neural GEC (future)
+**Data:**
+- **Training:** `Dt3.tsv` — 9,333,672 sentence pairs (correct→erroneous + correct→correct). Generated by applying grammar rules to correct Basque sentences. Available on the [Wayback Machine](https://web.archive.org/web/2020*/elhuyar.eus) (original URL down). See `tests/gec-benchmark/elhuyar/ELHUYAR_README.txt`.
+- **Evaluation:** `Dem_single.tsv` (250 manually-revised, single error), `Dem_multi.tsv` (221, multi-error), `Dem_none.tsv` (201, clean). Already downloaded.
+- **Error types:** R1 (tense), R2 (verb agreement/argument), R3 (case/agreement), R4 (suffix). All real-word errors.
 
-Train a seq2seq Basque grammar corrector (no Basque GEC model exists yet — this is txukun's stated Phase 2 goal). Out of scope for this document; would require a new training run and a different model format. See [`GEC_RESEARCH_2025.md`](./GEC_RESEARCH_2025.md) for the research landscape — the Elhuyar/Mendez synthetic-error methodology and the 2025-2026 SOTA survey.
+⚠️ **LICENSE BLOCKER:** The Elhuyar dataset is **CC-BY-NC-SA** (NonCommercial). A model trained on it inherits the NC restriction. Txukun is MIT-licensed and distributed as a free tool — whether that qualifies as "non-commercial" is legally murky. **Options:**
+  - (a) Ship the grammar model as a separate, NC-licensed component with a clear disclaimer. Users opt in.
+  - (b) Generate synthetic grammar errors from correct Basque text (extend `typo_gen.py` with morphology rules) — avoids the license entirely, but synthetic errors are lower quality.
+  - (c) Seek permission from Elhuyar Foundation for use in an open-source tool.
+  - **Recommendation:** Start with (b) for a prototype, pursue (c) for production.
+
+**Model choice:**
+
+| Option | Size | Pros | Cons |
+|---|---|---|---|
+| **MarianMT** (fine-tune `HiTZ/cap-punct-eu`) | ~77M | Already have ONNX export pipeline; Transformers.js already loads it; Basque-adapted | Encoder-decoder may be overkill for error correction; cap-punct pretraining may bias toward punctuation |
+| **mBART-small / BART** | ~50–140M | Strong seq2seq baseline; well-supported in ONNX | Not Basque-pretrained; needs more training data to compensate |
+| **ByT5-small** | ~300M | Character-level (good for morphology); strong on GEC benchmarks | Large for browser; slower inference |
+| **Custom small Transformer** | ~20–50M | Right-sized for browser; full control | Most engineering effort; no pretraining |
+
+**Recommendation:** Fine-tune MarianMT (option 1) — we already have the ONNX export + Transformers.js integration working. Reuse the cap-punct model as a starting point (transfer learning from cap-punct → GEC).
+
+**Training plan (GPU server, L40):**
+1. Re-download `Dt3.tsv` from Wayback Machine (9.3M pairs, ~268 MB compressed)
+2. Format as MarianMT training data (src = erroneous, tgt = correct)
+3. Fine-tune `HiTZ/cap-punct-eu` with `transformers` Seq2SeqTrainer (3–5 epochs, batch size 32, lr 3e-5)
+4. Evaluate on Dem_single/multi/none → M² scorer for F0.5 (GEC standard metric)
+5. Export to ONNX int8/int4 via `optimum` (same pipeline as cap-punct)
+6. Upload to HF Hub as `itzune/txukun-gec-eu`
+
+**Browser integration:**
+- New `src/grammar.js` — lazy-loads the GEC model (separate from cap-punct MarianMT)
+- Runs AFTER cap-punct + spell correction, as a final grammar pass
+- `constrainCapPunct()` is NOT applied (grammar correction *requires* word substitution — that's the whole point)
+- Instead, a `constrainGrammar()` guard limits changes to ≤N words per sentence (overcorrection filter, per BEA 2025 findings)
+
+**Scope estimate:** 1–2 weeks (data prep + training + eval + export + integration). This is a separate project, not a pipeline tweak.
+
+**Deliverable:** A browser-based Basque grammar corrector — the first of its kind. Closes axis 3 (normative grammar) fully.
 
 ---
 
