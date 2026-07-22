@@ -23,6 +23,8 @@ import {
 import { renderExamples, bindExampleClicks } from './ui-examples.js';
 import { loadSpellChecker, checkSpelling, autoCorrect, annotateWithCorrections, annotateSpelling, stripAnnotations } from './spell.js';
 
+console.log('[DEBUG] txukun main.js loaded');
+
 // ── State ──────────────────────────────────────────
 
 let correctorPipeline = null;
@@ -102,6 +104,51 @@ async function loadModel() {
 
 // ── Correction Logic ────────────────────────────────
 
+/**
+ * Constrain MarianMT output to ONLY capitalization + punctuation changes.
+ *
+ * MarianMT is a cap-punct model but sometimes hallucinates word
+ * substitutions (e.g., "Nire"→"Auzo", "hau"→"hausitza"). This filter
+ * compares word-by-word: if the lowercase form differs, the substitution
+ * is rejected and the original word is kept. Only cap/punct changes pass.
+ *
+ * If token counts differ (model added/removed a word), the entire line
+ * is rejected — safer than misaligning.
+ */
+function constrainCapPunct(inputLine, outputLine) {
+  const inputTokens = inputLine.match(/\S+/g) || [];
+  const outputTokens = outputLine.match(/\S+/g) || [];
+
+  // Token count mismatch → model did something drastic, reject entirely
+  if (inputTokens.length !== outputTokens.length) {
+    console.log('[DEBUG] constrainCapPunct: token count mismatch, rejecting line',
+      { input: inputTokens.length, output: outputTokens.length });
+    return inputLine;
+  }
+
+  const result = [];
+  for (let i = 0; i < inputTokens.length; i++) {
+    const inTok = inputTokens[i];
+    const outTok = outputTokens[i];
+
+    // Extract alphabetic word part (strip punctuation) for comparison
+    const inWord = inTok.replace(/[^A-Za-zÀ-ÿñÑüÜ]/g, '');
+    const outWord = outTok.replace(/[^A-Za-zÀ-ÿñÑüÜ]/g, '');
+
+    if (inWord.toLowerCase() === outWord.toLowerCase()) {
+      // Same word (possibly different capitalization) — accept output token
+      result.push(outTok);
+    } else {
+      // Word substitution detected — reject, keep input token
+      console.log('[DEBUG] constrainCapPunct: rejected substitution',
+        { position: i, input: inTok, output: outTok });
+      result.push(inTok);
+    }
+  }
+
+  return result.join(' ');
+}
+
 async function correctText() {
   const input = getInputText().trim();
   if (!input) {
@@ -123,6 +170,7 @@ async function correctText() {
   let preModelCorrections = [];
   if (spellReady && spellEnabled) {
     const corrected = await autoCorrect(input);
+    console.log('[DEBUG] pre-model autoCorrect:', JSON.stringify({ input, output: corrected.text, changes: corrected.changes, corrections: corrected.corrections }));
     if (corrected.changes > 0) {
       modelInput = corrected.text;
       // Save pre-model corrections for green annotation in output.
@@ -144,6 +192,7 @@ async function correctText() {
     for (const line of lines) {
       const result = await correctorPipeline(line);
       let text = result[0]?.translation_text || line;
+      console.log('[DEBUG] MarianMT:', JSON.stringify({ input: line, output: text }));
       // Clean MarianMT output special tokens: <unk>, </s>, <pad>, <s>
       text = text
         .replace(/<\/s>/g, '')
@@ -152,6 +201,12 @@ async function correctText() {
         .replace(/<unk>/g, '')
         .replace(/\s{2,}/g, ' ')
         .trim();
+      // Constrain to cap/punct only — reject word substitutions
+      const constrained = constrainCapPunct(line, text);
+      if (constrained !== text) {
+        console.log('[DEBUG] MarianMT constrained:', JSON.stringify({ before: text, after: constrained }));
+      }
+      text = constrained;
 
       results.push(text || line);
     }
@@ -167,10 +222,12 @@ async function correctText() {
         .replace(/<unk>/g, '')
         .replace(/\s{2,}/g, ' ')
         .trim();
+      text = constrainCapPunct(modelInput, text);
       results.push(text || input);
     }
 
     const output = results.join('\n');
+    console.log('[DEBUG] MarianMT joined output:', JSON.stringify({ modelInput, output }));
 
     // Run spell check if enabled and available
     let finalOutput = output;
@@ -178,6 +235,7 @@ async function correctText() {
     if (spellReady && spellEnabled) {
       // Auto-correct: replace misspelled words with first suggestion
       const result = await autoCorrect(output);
+      console.log('[DEBUG] post-model autoCorrect:', JSON.stringify({ input: output, output: result.text, changes: result.changes, corrections: result.corrections }));
       finalOutput = result.text;
       setSpellStatus(true, result.changes + preModelCorrections.length);
 

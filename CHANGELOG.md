@@ -4,6 +4,58 @@ All notable changes to Txukun will be documented in this file.
 
 ---
 
+## [Unreleased] — Tier 1 frequency re-ranking for autocorrect
+
+Implements Tier 1 of [`CORRECTOR_STRATEGY.md`](./CORRECTOR_STRATEGY.md): replace the
+blind `suggestions[0]` autocorrect with corpus-frequency re-ranking. No new
+dependencies; all inference stays client-side.
+
+### Fixed
+- **`batzutan`-class autocorrect bugs** (`XUXEN_ISSUES.md` §1): `autoCorrect()`
+  no longer blindly takes Hunspell's first suggestion. For `batzutan`, Hunspell
+  proposes `batsutan` (wrong, an affix-generated form absent from the corpus)
+  and never proposes the correct `batzuetan`. The new re-ranker generates
+  edit-distance-1 candidates against the wordlist and picks `batzuetan`
+  (corpus count 14,790) over `batsutan` (count 0) by frequency. Verified for the
+  full §9 test set in `scripts/verify-autocorrect.mjs`.
+
+### Changed
+- **`autoCorrect()` re-ranks candidates** (`src/spell.js`): the candidate pool
+  is now `(edit-distance-1 variants ∩ wordlist) ∪ (Hunspell suggestions)`, scored
+  as `score = β·log(freq+1) + δ·(1/(1+edit_distance))` with `β=0.3, δ=0.5`
+  (named `SCORE_BETA`/`SCORE_DELTA` constants, ready for grid-search). Hunspell
+  is demoted to a *secondary* candidate source — it is no longer the sole
+  generator nor the ranker. A confidence gate (`freq > 0` OR `ed === 1`) prevents
+  forcing rare zero-frequency edit-distance-2 words onto the user; words with no
+  confident candidate are left unchanged (graceful degradation).
+- **Single dictionary fetch**: `loadSpellChecker()` now fetches
+  `eu-words-freq.txt` once and builds both the main-thread frequency `Map` (for
+  re-ranking) and the worker's detection `Set` (the worker parses the `word\tcount`
+  word column). The redundant `eu-words.txt` fetch is dropped (~1.6 MB saved at
+  runtime; the file is retained in the repo as legacy). The two files are
+  byte-identical word sets (160,459 words).
+- New exported pure helpers in `src/spell.js`: `edits1`, `levenshtein`,
+  `matchCase`, `rankCandidates` (unit-testable in Node without the Worker).
+
+### Known limitations (deferred to Tier 2 — neural re-ranking via wllama)
+- **Proper-noun diacritic restoration** (e.g. `inaki → iñaki`): on the shipped
+  160k wordlist `Iñaki` has corpus count 0, so frequency re-ranking picks
+  `izaki` (count 1,831) instead. This is context-dependent (name vs. word) and
+  needs the LM. Since `Iñaki` is in Xuxen's `eu.dic`, the previous
+  `suggestions[0]` path may have restored it via Hunspell's REP/TRY tables — a
+  possible regression for this specific class. Mitigation options: Tier 2 LM, or
+  an optional diacritic-aware edit-distance refinement (not in the Tier 1 spec).
+- **Genuine multi-candidate ambiguity** (e.g. `mutika → musika` instead of
+  `mutila`): frequency alone picks the more common word; only context (LM)
+  resolves it. Documented in `CORRECTOR_STRATEGY.md` §9.
+
+### Added
+- `scripts/verify-autocorrect.mjs` — Node verification of the §9 test cases
+  against the shipped wordlist, importing the real `spell.js` helpers
+  (Hunspell stubbed to `[]` to isolate the new logic).
+
+---
+
 ## [1.5.1] — Hunspell WASM worker ready fix + green annotation — 2026-06-29
 
 ### Fixed

@@ -239,7 +239,9 @@ async function handleInit({ wasmUrl, affixContent, dictionaryContent, wordListCo
     wordList = new Set();
     if (wordListContent) {
       for (const line of wordListContent.split('\n')) {
-        const w = line.trim();
+        // Format is "word\tcount" (eu-words-freq.txt). Extract the word
+        // column; falls back to the whole line if no tab (legacy eu-words.txt).
+        const w = (line.includes('\t') ? line.slice(0, line.indexOf('\t')) : line).trim();
         if (w && !w.startsWith('#')) {
           wordList.add(w.toLowerCase());
         }

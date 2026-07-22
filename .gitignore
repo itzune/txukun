@@ -2,5 +2,9 @@ node_modules/
 dist/
 .vite/
 *.log
+.env
 src/hunspell-loader.js
 src/vendor/
+
+# LM model (49MB GGUF, built by futo-transformer-basque/scripts/package/patch_gguf_bos.py)
+public/models/

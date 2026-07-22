@@ -25,6 +25,11 @@ let ready = false;
 let pendingRequests = new Map();
 let nextId = 1;
 
+// Tier 1 frequency re-ranking state.
+// Lowercase word → raw corpus count, from public/dicts/eu-words-freq.txt.
+// Built once in loadSpellChecker(); used by rankCandidates() in autoCorrect().
+let freqMap = new Map();
+
 /**
  * Spawn the Hunspell worker and load Xuxen dictionaries.
  */
@@ -33,16 +38,31 @@ export async function loadSpellChecker() {
 
   const basePath = import.meta.env.BASE_URL || '/txukun/';
 
-  // Fetch dictionary files
-  const [affResp, dicResp, wordsResp] = await Promise.all([
+  // Fetch dictionary files. eu-words-freq.txt doubles as the detection
+  // word list (same 160k words, "word\tcount" per line) and the frequency
+  // map for Tier 1 re-ranking — one fetch instead of two (drops the
+  // redundant 1.6MB eu-words.txt fetch).
+  const [affResp, dicResp, freqResp] = await Promise.all([
     fetch(basePath + 'dicts/eu.aff'),
     fetch(basePath + 'dicts/eu.dic'),
-    fetch(basePath + 'dicts/eu-words.txt').catch(() => null), // optional
+    fetch(basePath + 'dicts/eu-words-freq.txt').catch(() => null), // optional
   ]);
 
   const affixContent = await affResp.text();
   const dictionaryContent = await dicResp.text();
-  const wordListContent = wordsResp ? await wordsResp.text() : null;
+  const freqContent = freqResp ? await freqResp.text() : null;
+
+  // Build frequency map (main thread) for Tier 1 re-ranking.
+  freqMap = new Map();
+  if (freqContent) {
+    for (const line of freqContent.split('\n')) {
+      const tab = line.indexOf('\t');
+      if (tab <= 0) continue;
+      const word = line.slice(0, tab).trim().toLowerCase();
+      const count = parseInt(line.slice(tab + 1), 10);
+      if (word) freqMap.set(word, Number.isFinite(count) ? count : 0);
+    }
+  }
 
   // Spawn worker (Vite bundles this as a separate module)
   worker = new Worker(
@@ -86,7 +106,9 @@ export async function loadSpellChecker() {
     wasmUrl: basePath + 'hunspell.wasm',
     affixContent,
     dictionaryContent,
-    wordListContent,
+    // Passed as wordListContent: the worker splits on '\t' to take the
+    // word column (same 160k words as the legacy eu-words.txt).
+    wordListContent: freqContent,
   });
 
   // Wait for the worker to be fully initialized
@@ -99,6 +121,174 @@ export async function loadSpellChecker() {
 export function isReady() {
   return ready;
 }
+
+// ── Frequency re-ranking (Tier 1) ───────────────────
+//
+// Re-ranks correction candidates by corpus frequency + edit distance
+// instead of blindly taking Hunspell's suggestions[0]. The candidate
+// pool is (edit-distance-1 variants ∩ wordlist) ∪ (Hunspell suggestions):
+// Hunspell alone never proposes the correct word for cases like
+// `batzutan` (it returns `batsutan`, `batzotan` — never `batzuetan`),
+// so edit-distance generation against the wordlist is required.
+//
+// See CORRECTOR_STRATEGY.md §5 (Tier 1) and §9 (verified evidence).
+
+// Scoring weights — named constants for later grid-search. β weights
+// corpus frequency (raw count, log-scaled); δ weights edit distance as a
+// noisy-channel prior. Frequency dominates (Tier 1 intent), edit distance
+// breaks ties. Starting values per the strategy (§7).
+export const SCORE_BETA = 0.3;
+export const SCORE_DELTA = 0.5;
+
+// Lowercase Basque alphabet for edit-distance generation. Includes
+// diacritics so a substitution like n→ñ can surface `iñaki` from `inaki`.
+const EU_ALPHABET = 'abcdefghijklmnopqrstuvwxyzáéíóúüñçàèìòùâêîôû';
+
+/**
+ * Generate all edit-distance-1 variants of a word (Norvig-style:
+ * deletions, transpositions, substitutions, insertions). Lowercases the
+ * input. Does NOT filter by dictionary — the caller filters against the
+ * wordlist/freqMap. The original word is never included.
+ */
+export function edits1(word) {
+  const w = (word || '').toLowerCase();
+  const splits = [];
+  for (let i = 0; i <= w.length; i++) splits.push([w.slice(0, i), w.slice(i)]);
+
+  const results = new Set();
+  for (const [a, b] of splits) {
+    if (b.length > 0) results.add(a + b.slice(1));               // deletion
+    if (b.length > 1) results.add(a + b[1] + b[0] + b.slice(2)); // transposition
+    for (const c of EU_ALPHABET) {
+      if (b.length > 0) results.add(a + c + b.slice(1));         // substitution
+      results.add(a + c + b);                                    // insertion
+    }
+  }
+  results.delete(w);
+  return results;
+}
+
+/**
+ * Levenshtein edit distance (iterative DP, case-insensitive).
+ */
+export function levenshtein(a, b) {
+  a = (a || '').toLowerCase();
+  b = (b || '').toLowerCase();
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = new Array(n + 1);
+  let curr = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    const tmp = prev; prev = curr; curr = tmp;
+  }
+  return prev[n];
+}
+
+/**
+ * Restore the case pattern of `source` onto `target` (which arrives
+ * lowercased from the wordlist). ALL-CAPS → uppercase; Title-case →
+ * capitalized first letter; all-lower or mixed → lowercase.
+ */
+export function matchCase(source, target) {
+  if (!source || !target) return target;
+  const letters = [...source].filter(ch => /\p{L}/u.test(ch));
+  if (letters.length === 0) return target;
+  const isUpper = ch => ch.toLowerCase() !== ch && ch.toUpperCase() === ch;
+  const upperCount = letters.filter(isUpper).length;
+
+  if (upperCount === letters.length && letters.length > 1) {
+    return target.toUpperCase();                                    // ALL CAPS
+  }
+  if (isUpper(letters[0]) && letters.slice(1).every(ch => !isUpper(ch))) {
+    const t = target.toLowerCase();
+    return t.charAt(0).toUpperCase() + t.slice(1);                 // Title case
+  }
+  return target.toLowerCase();                                      // lower / mixed
+}
+
+/**
+ * Build and score the Tier 1 candidate pool for `typed`.
+ *   pool = (edits1(typed) ∩ wordlist) ∪ hunspellSuggestions
+ * scored as  score = β·log(freq+1) + δ·(1/(1+edit_distance)).
+ *
+ * Confidence gate: a candidate is eligible only if corpus-attested
+ * (freq > 0) OR within edit distance 1 — prevents forcing a rare,
+ * zero-frequency, edit-distance-2 word onto the user.
+ *
+ * @param {string} typed                 misspelled word (any case)
+ * @param {string[]} hunspellSuggestions Hunspell's suggestions (secondary)
+ * @param {Map<string,number>} [fmap]    freq map; defaults to module freqMap
+ * @returns {{word:string, score:number}[]}  sorted desc by score, case-matched.
+ *          Empty array → no confident candidate (caller leaves word unchanged).
+ */
+export function getRankedCandidates(typed, hunspellSuggestions, fmap) {
+  if (!typed) return [];
+  const map = fmap && fmap.size ? fmap : freqMap;
+  const typedLower = typed.toLowerCase();
+
+  // Edit-distance-1 variants (computed once), filtered to real words.
+  const ed1Variants = edits1(typedLower);
+  const pool = new Set(); // lowercase candidate words
+  for (const v of ed1Variants) {
+    if (map.has(v)) pool.add(v);
+  }
+
+  // Hunspell suggestions (secondary source) — may surface forms that
+  // edit-distance generation misses (affix/REP suggestions). Accepted even
+  // if absent from our wordlist, since Hunspell's rules validate them.
+  if (Array.isArray(hunspellSuggestions)) {
+    for (const s of hunspellSuggestions) {
+      if (!s) continue;
+      const sLow = s.toLowerCase();
+      if (sLow !== typedLower) pool.add(sLow);
+    }
+  }
+
+  const ranked = [];
+  for (const cand of pool) {
+    const freq = map.get(cand) ?? 0;
+    const ed = ed1Variants.has(cand) ? 1 : levenshtein(typedLower, cand);
+    // Confidence gate: corpus-attested OR within edit distance 1.
+    if (freq <= 0 && ed !== 1) continue;
+    const score = SCORE_BETA * Math.log(freq + 1) + SCORE_DELTA * (1 / (1 + ed));
+    ranked.push({ word: cand, score });
+  }
+
+  ranked.sort((a, b) => b.score - a.score);
+  return ranked.map(c => ({ word: matchCase(typed, c.word), score: c.score }));
+}
+
+/**
+ * Pick the best correction — convenience wrapper around getRankedCandidates.
+ * @returns {{word:string, score:number}|null}
+ */
+export function rankCandidates(typed, hunspellSuggestions, fmap) {
+  const ranked = getRankedCandidates(typed, hunspellSuggestions, fmap);
+  return ranked.length > 0 ? ranked[0] : null;
+}
+
+// LM re-ranking is loaded dynamically (lazy) so wllama's 357KB bundle
+// can't break page load if it fails. See lm-rerank.js.
+let lmModule = null;
+async function getLM() {
+  if (!lmModule) lmModule = await import('./lm-rerank.js');
+  return lmModule;
+}
+
+// Model URL for the futo GGUF (BOS-patched, lazy-loaded).
+const LM_MODEL_URL = (import.meta.env.BASE_URL || '/') + 'models/eu_futo_v2_nobos.gguf';
+
+// How many characters of context before the error to feed the LM.
+// 200 chars ≈ 30–40 words — enough for a sentence or two.
+const LM_CONTEXT_CHARS = 200;
 
 // ── Worker Communication Helpers ────────────────────
 
@@ -231,7 +421,19 @@ export async function checkSpelling(text) {
 }
 
 /**
- * Auto-correct: replace each misspelled word with Hunspell's first suggestion.
+ * Auto-correct: replace each misspelled word with the best candidate.
+ *
+ * Two-tier re-ranking:
+ *   Tier 1 (fast): frequency + edit distance via getRankedCandidates().
+ *   Tier 2 (slow): LM surprisal via wllama, lazy-loaded on first use.
+ *
+ * The LM is only invoked when:
+ *   1. It has finished loading (non-blocking — degrades to Tier 1 otherwise)
+ *   2. There are ≥2 candidates (a single candidate needs no re-ranking)
+ *
+ * Combined score = tier1_score + LM_WEIGHT · surprisal
+ *
+ * Words with no confident candidate are left unchanged (safe degradation).
  */
 export async function autoCorrect(text) {
   if (!ready) return { text, changes: 0, corrections: [] };
@@ -239,18 +441,58 @@ export async function autoCorrect(text) {
   const errors = await checkSpelling(text);
   if (errors.length === 0) return { text, changes: 0, corrections: [] };
 
-  // Sort by position (descending) so we can replace from right to left
+  // Sort by position (descending) so we can replace from right to left.
+  // This preserves the start positions of remaining (leftward) errors.
   const sorted = [...errors].sort((a, b) => b.start - a.start);
 
   let result = text;
   const corrections = [];
   for (const err of sorted) {
-    if (err.suggestions.length > 0) {
+    const ranked = getRankedCandidates(err.word, err.suggestions, freqMap);
+    let best = ranked.length > 0 ? ranked[0] : null;
+
+    // Tier 2: LM re-ranking when multiple candidates exist and LM is ready.
+    if (ranked.length >= 2) {
+      let lm = null;
+      try { lm = await getLM(); } catch (e) { console.warn('[spell] LM module load failed:', e); }
+      if (lm && !lm.isLMFailed()) {
+        if (!lm.isLMReady()) {
+          // First use: block until LM loads so this correction benefits from Tier 2.
+          console.log('[DEBUG] LM loading (first use)...');
+          await lm.initLM(LM_MODEL_URL);
+        }
+        if (lm.isLMReady()) {
+          const context = result.slice(Math.max(0, err.start - LM_CONTEXT_CHARS), err.start).trim();
+          const candidates = ranked.slice(0, 5).map(c => c.word.toLowerCase());
+          const surprisals = await lm.lmRerank(context, candidates);
+
+          // Combined score = tier1 + LM_WEIGHT · surprisal
+          let bestCombined = -Infinity;
+          for (let i = 0; i < ranked.length && i < surprisals.length; i++) {
+            const combined = ranked[i].score + lm.LM_WEIGHT * surprisals[i];
+            if (combined > bestCombined) {
+              bestCombined = combined;
+              best = ranked[i];
+            }
+          }
+          console.log('[DEBUG] LM rerank:', JSON.stringify({
+            word: err.word,
+            candidates: ranked.slice(0, 5).map((c, i) => ({
+              word: c.word, tier1: c.score.toFixed(2), surprisal: surprisals[i]?.toFixed(2), combined: (c.score + lm.LM_WEIGHT * (surprisals[i] || 0)).toFixed(2)
+            })),
+            winner: best?.word,
+          }));
+        }
+      }
+    }
+
+    if (best) {
       const original = err.word;
-      const corrected = err.suggestions[0];
+      const corrected = best.word;
       result = result.slice(0, err.start) + corrected + result.slice(err.end);
       corrections.push({ start: err.start, end: err.start + corrected.length, original, corrected });
     }
+    // No confident candidate → leave the word unchanged (safe degradation).
   }
 
   return {
