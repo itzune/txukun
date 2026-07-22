@@ -2,7 +2,7 @@
 
 > Architecture document for upgrading txukun's autocorrect from a static Hunspell-first lookup to a multi-signal neural re-ranker. This is the design spec for Phase 2 spell-correction work.
 
-**Status:** Tier 1 + Tier 2 implemented. Tier 2.5 (real-word detection) + Tier 3 (grammar corrector) proposed below.
+**Status:** Tier 1 + Tier 2 implemented. Tier 2.5 (real-word detection) — tested, insufficient with base BERTeus. Tier 3 (GECToR grammar corrector) — **IN PROGRESS** (training on 1M Elhuyar pairs, browser pipeline built).
 **Date:** 2026-06-29 (updated 2026-07-22)
 **Related:** [`XUXEN_ISSUES.md`](./XUXEN_ISSUES.md), [`RESEARCH.md`](./RESEARCH.md), [`PROGRESS_REPORT_2026-06-28.md`](./PROGRESS_REPORT_2026-06-28.md), [`GEC_RESEARCH_2025.md`](./GEC_RESEARCH_2025.md)
 
@@ -17,7 +17,7 @@ The two gaps, and their solutions:
 | Gap | What's missed | Solution | Cost |
 |---|---|---|---|
 | **Real-word / semantic** (axis 2 detection) | `etxea` vs `etxera`, `dio` vs `zaio` — all valid words | **Tier 2.5:** BERTeus detection on every in-dictionary word (model already loaded) | Free (new code, no new model) |
-| **Grammar correction** (axis 3) | Systematic grammar errors needing inflection changes | **Tier 3:** Fine-tune seq2seq on Elhuyar 9.3M GEC pairs | New model + training (1–2 weeks) |
+| **Grammar correction** (axis 3) | Systematic grammar errors needing inflection changes | **Tier 3:** GECToR on RoBERTa-eus-base, trained on Elhuyar GEC pairs | 🚧 In progress (training + browser pipeline built) |
 
 The current architecture (what's built):
 
@@ -41,9 +41,16 @@ The current architecture (what's built):
                          └──────────────┬───────────────────────────┘
                                         ▼
                          4. MarianMT cap-punct (constrainCapPunct guard)
+                                        │
+                         ┌──────────────▼───────────────────────────┐
+                         │ 5. GECToR grammar correction (Tier 3)     │
+                         │    RoBERTa-eus-base, int4 ONNX (~85MB)   │
+                         │    Edit-based: $KEEP/$DELETE/$REPLACE     │
+                         │    🚧 Training on 1M Elhuyar GEC pairs    │
+                         └──────────────────────────────────────────┘
 ```
 
-**Tier 2.5** adds a detection pass (step 1b) using the same BERTeus model. **Tier 3** adds a grammar correction pass (step 5) using a new seq2seq model.
+**Tier 2.5** (real-word detection via BERTeus) was tested but the base model signal is insufficient (F1=25%, below 70% precision threshold). **Tier 3** uses GECToR (edit-based GEC on RoBERTa-eus-base) for grammar correction — browser pipeline built, full model training in progress.
 
 ---
 
@@ -401,51 +408,51 @@ Also tested 6 alternative strategies (top-k exclusion, relative/sentence-level m
 
 **Next step:** A fine-tuned GED (grammatical error detection) classifier head on BERTeus is needed. This is what Mendez (2023) did — train a binary classifier on top of BERTeus that predicts "is this word correct in context?" This requires labeled training data and a fine-tuning run. See Tier 3.
 
-### Tier 3 — Grammar corrector (new seq2seq model, separate workstream)
+### Tier 3 — Grammar corrector (GECToR on RoBERTa-eus-base, IN PROGRESS)
 
 **The problem Tier 2.5 can't solve:** BERTeus detection flags *which* word is wrong, but for grammar errors the correction often requires changing inflection in a way that embedding similarity can't reliably propose. `etxea`→`etxera` (absolutive→allative) are different words but nearby in embedding space; `dio`→`zaio` (transitive→dative) may not be nearby at all. For systematic grammar correction, a model trained explicitly on error→correct pairs is needed.
 
-**The approach:** Fine-tune a seq2seq model on the Elhuyar GEC dataset (9.3M error→correct pairs). This is the SOTA approach for low-resource GEC (Zarma 2024) and the method used by Elhuyar themselves (Beloki et al. 2020).
+**The approach: GECToR (edit-based GEC).** Based on research (see `GEC_RESEARCH_TIER3.md`), GECToR (Omelianchuk et al. 2020) is the SOTA approach for browser-deployable GEC:
+- **Faster than seq2seq** (non-autoregressive, up to 10× faster inference)
+- **Smaller model** (encoder-only, ~110M vs seq2seq 300M+)
+- **Better F0.5** than T5-11B and GPT-4 zero-shot on English GEC benchmarks (Pillars of GEC, BEA 2024)
+- **Proven on agglutinative languages** (gector-ja for Japanese, which is agglutinative like Basque)
+- **Built-in error detection** (detect head: $CORRECT/$INCORRECT) — no separate GED classifier needed
+
+**Base model: RoBERTa-eus-base** (`ixa-ehu/roberta-eus-euscrawl-base-cased`):
+- 110M params, 12L/768H, vocab 50,005 (BPE)
+- 423M pretraining tokens (EusCrawl, cleaner than BERTeus's 224.6M)
+- GECToR-native architecture (GECToR-2024 SOTA uses RoBERTa)
+- ~85 MB int4 ONNX (same deployment cost as BERTeus)
+
+**Architecture:**
+- Encoder: RoBERTa-eus-base (frozen during cold start, unfrozen for fine-tuning)
+- Label head: Linear(768 → 4534) — predicts token-level edits: $KEEP, $DELETE, $REPLACE_x (4527 labels), $APPEND_x (4 labels), <OOV>, <PAD>
+- Detect head: Linear(768 → 2) — predicts $CORRECT / $INCORRECT per token
+- Inference: iterative (up to 5 passes), with `min_error_prob` threshold (0.5) and `keep_confidence` bias for precision
 
 **Data:**
-- **Training:** `Dt3.tsv` — 9,333,672 sentence pairs (correct→erroneous + correct→correct). Generated by applying grammar rules to correct Basque sentences. Available on the [Wayback Machine](https://web.archive.org/web/2020*/elhuyar.eus) (original URL down). See `tests/gec-benchmark/elhuyar/ELHUYAR_README.txt`.
-- **Evaluation:** `Dem_single.tsv` (250 manually-revised, single error), `Dem_multi.tsv` (221, multi-error), `Dem_none.tsv` (201, clean). Already downloaded.
+- **Training:** 1M pairs from `Dt3.tsv` (9.3M total available). 47.1% with errors, 52.9% clean. Generated by applying grammar rules to correct Basque sentences.
+- **Evaluation:** `Dem_single.tsv` (221 manually-revised, single error), `Dem_none.tsv` (250 clean). Already downloaded.
 - **Error types:** R1 (tense), R2 (verb agreement/argument), R3 (case/agreement), R4 (suffix). All real-word errors.
 
-⚠️ **LICENSE BLOCKER:** The Elhuyar dataset is **CC-BY-NC-SA** (NonCommercial). A model trained on it inherits the NC restriction. Txukun is MIT-licensed and distributed as a free tool — whether that qualifies as "non-commercial" is legally murky. **Options:**
-  - (a) Ship the grammar model as a separate, NC-licensed component with a clear disclaimer. Users opt in.
-  - (b) Generate synthetic grammar errors from correct Basque text (extend `typo_gen.py` with morphology rules) — avoids the license entirely, but synthetic errors are lower quality.
-  - (c) Seek permission from Elhuyar Foundation for use in an open-source tool.
-  - **Recommendation:** Start with (b) for a prototype, pursue (c) for production.
+⚠️ **LICENSE:** The Elhuyar dataset is **CC-BY-NC-SA** (NonCommercial). A model trained on it inherits the NC restriction. The GECToR model is shipped as a separate component with this license noted. See README license section.
 
-**Model choice:**
+**Implementation:**
+- **Training:** `gector-eus` project (`/home/xezpeleta/Dev/itzune/gector-eus/`), using `gotutiyan/gector` PyTorch implementation. 5 epochs (1 cold + 4 fine-tune), batch_size=128, max_len=128.
+- **ONNX export:** int4 quantization (MatMulNBits + int8 Gather), ~85 MB. Validated: 99.8% token-level match vs PyTorch.
+- **Browser pipeline:** `src/gector.js` — lazy-loaded via onnxruntime-web. Manual word_ids tracking (Transformers.js lacks `is_split_into_words`). Full GECToR predict pipeline: softmax + keep_confidence + min_error_prob threshold + iterative prediction.
+- **Production integration:** Runs after MarianMT cap-punct in `src/main.js`. `?grammar=0` URL param to disable. Graceful degradation: returns original text if model fails to load.
+- **Test page:** `gector-test.html` — interactive correction + batch validation.
 
-| Option | Size | Pros | Cons |
-|---|---|---|---|
-| **MarianMT** (fine-tune `HiTZ/cap-punct-eu`) | ~77M | Already have ONNX export pipeline; Transformers.js already loads it; Basque-adapted | Encoder-decoder may be overkill for error correction; cap-punct pretraining may bias toward punctuation |
-| **mBART-small / BART** | ~50–140M | Strong seq2seq baseline; well-supported in ONNX | Not Basque-pretrained; needs more training data to compensate |
-| **ByT5-small** | ~300M | Character-level (good for morphology); strong on GEC benchmarks | Large for browser; slower inference |
-| **Custom small Transformer** | ~20–50M | Right-sized for browser; full control | Most engineering effort; no pretraining |
+**Smoke test results** (100k pairs, 3 epochs):
+- Dem_single (221 errorful): 72.4% exact match, F0.5=75.2 (at min_error_prob=0.5: F0.5=83.8)
+- Dem_none (250 clean): 96.4% exact match, 3.6% false positive rate (at 0.5: 2.4%)
+- Comparison: GECToR-2024 (English, RoBERTa-large 300M) scores F0.5=72.9 on BEA-dev
 
-**Recommendation:** Fine-tune MarianMT (option 1) — we already have the ONNX export + Transformers.js integration working. Reuse the cap-punct model as a starting point (transfer learning from cap-punct → GEC).
+**Full model** (1M pairs, 5 epochs): training in progress on GPU server.
 
-**Training plan (GPU server, L40):**
-1. Re-download `Dt3.tsv` from Wayback Machine (9.3M pairs, ~268 MB compressed)
-2. Format as MarianMT training data (src = erroneous, tgt = correct)
-3. Fine-tune `HiTZ/cap-punct-eu` with `transformers` Seq2SeqTrainer (3–5 epochs, batch size 32, lr 3e-5)
-4. Evaluate on Dem_single/multi/none → M² scorer for F0.5 (GEC standard metric)
-5. Export to ONNX int8/int4 via `optimum` (same pipeline as cap-punct)
-6. Upload to HF Hub as `itzune/txukun-gec-eu`
-
-**Browser integration:**
-- New `src/grammar.js` — lazy-loads the GEC model (separate from cap-punct MarianMT)
-- Runs AFTER cap-punct + spell correction, as a final grammar pass
-- `constrainCapPunct()` is NOT applied (grammar correction *requires* word substitution — that's the whole point)
-- Instead, a `constrainGrammar()` guard limits changes to ≤N words per sentence (overcorrection filter, per BEA 2025 findings)
-
-**Scope estimate:** 1–2 weeks (data prep + training + eval + export + integration). This is a separate project, not a pipeline tweak.
-
-**Deliverable:** A browser-based Basque grammar corrector — the first of its kind. Closes axis 3 (normative grammar) fully.
+**Deliverable:** A browser-based Basque grammar corrector — the first of its kind. Closes axis 3 (normative grammar).
 
 ---
 
