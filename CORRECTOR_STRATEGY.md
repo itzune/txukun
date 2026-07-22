@@ -864,40 +864,49 @@ Where:
 
 | Factor | Futo GGUF (current Tier 2) | BERTeus ONNX (validated) |
 |---|---|---|
-| Model size | 49 MB | 119 MB (int8) + 74 MB (f16 embeddings) = **193 MB** |
+| Model size | 49 MB | 85 MB (int4) + 74 MB (f16 embeddings) = **159 MB** |
 | Runtime | wllama (WASM) | Transformers.js (WASM) |
 | Forward passes per case | 2 × n_candidates | **1** (single <tool_call>) |
 | Speed (GPU) | 4.3/s | **220/s** |
-| Net improvement | +6 | **+99** (PyTorch) / **+105** (int8 ONNX) |
+| Net improvement | +6 | **+99** (PyTorch) / **+105** (int8) / **+110** (int4) |
 | Already a dependency? | No (new wllama dep) | Yes (Transformers.js already loaded for MarianMT) |
 
 **Browser validation results** (`berteus-test.html`, 30 test cases via headless Playwright):
 
-| Metric | Value |
-|---|---|
-| Model load time | 3.1s |
-| Embeddings load (74MB f16) | 0.9s (fetch 0.3s + f16→f32 0.3s) |
-| 30 cases inference | ~2s |
-| T2 browser correct | 22/30 (73.3%) |
-| T2 python correct | 23/30 (76.7%) |
-| Match Python ranking | **29/30 (96.7%)** |
-| Max score diff | 0.128 |
-| Mean score diff | 0.013 |
+| Metric | int4 (`q4`) | int8 (`q8`) |
+|---|---|---|
+| Model file size | **85 MB** | 119 MB |
+| Model load time | **2.8s** | 3.1s |
+| Embeddings load (74MB f16) | 0.9s | 0.9s |
+| 30 cases inference | ~2s | ~2s |
+| T2 browser correct | **24/30 (80.0%)** | 22/30 (73.3%) |
+| T2 python correct | 23/30 (76.7%) | 23/30 (76.7%) |
+| Match Python ranking | **29/30 (96.7%)** | 29/30 (96.7%) |
+| Mean score diff | **0.011** | 0.013 |
 
-**Browser BERTeus is validated.** 29/30 cases match Python's ranking exactly. The one discrepancy is an int8 quantization boundary case. Mean score difference is 0.013 (noise from int8 model + float16 embeddings).
+**Browser BERTeus is validated with int4.** 29/30 cases match Python's ranking exactly. The int4 model is smaller (85 MB vs 119 MB), faster to load (2.8s vs 3.1s), and produces equivalent or better quality (+110 net vs +105 on the full 933-case benchmark). `MatMulNBits` operator confirmed working on the WASM backend.
 
 Files deployed to `public/models/berteus/`:
-- `onnx/model_quantized.onnx` (119MB, int8)
+- `onnx/model_q4.onnx` (85MB, int4 — **production**)
+- `onnx/model_quantized.onnx` (119MB, int8 — fallback)
 - `word_embeddings_f16.bin` (74MB, float16 embedding matrix)
 - `tokenizer.json`, `config.json`, `vocab.txt`
 - `browser_test_cases.json` (30 test cases with Python reference scores)
 
+Also available on HuggingFace: [`itzune/berteus-onnx`](https://huggingface.co/itzune/berteus-onnx)
+
 Key implementation details for browser:
 - `env.allowLocalModels = true; env.allowRemoteModels = false; env.localModelPath = BASE + 'models/'`
-- `AutoModel.from_pretrained('berteus', { dtype: 'q8', device: 'wasm' })`
+- `AutoModel.from_pretrained('berteus', { dtype: 'q4', device: 'wasm' })`
 - Transformers.js returns `BigInt64Array` for `input_ids` — must `Array.from(...).map(Number)`
 - Float16 embeddings converted via bit manipulation (no DataStream dependency)
-- Scoring: `tier1_score + 15 × cosine_sim(normalize(mask_hidden), normalize(mean(candidate_embeddings)))`
+- Scoring: `tier1_score + 18 × cosine_sim(normalize(mask_hidden), normalize(mean(candidate_embeddings)))`
+
+**int4 quantization details:** Two-step process using ONNX Runtime's `MatMulNBitsQuantizer`:
+1. Encoder MatMul ops → int4 (weight-only, block_size=128, asymmetric) via `MatMulNBits` operator
+2. Embedding Gather ops → int8 (QDQ: `DequantizeLinear`) via dynamic quantization
+
+This approach keeps embeddings in int8 (not int4) to avoid `GatherBlockQuantized`, which is NOT implemented on the WASM backend. The `MatMulNBits` operator IS supported on WASM in Transformers.js v3+. See `txukun-cli/tests/gec-benchmark/quantize_int4.py`.
 
 ### C.7 Revised tiered plan
 
@@ -931,14 +940,14 @@ These are inherent limitations of the approach, not bugs. A larger or fine-tuned
 - Reproduce: `cd txukun-cli && uv run --extra bench python tests/gec-benchmark/eval.py --berteus`
 
 **Browser integration** (`txukun/src/bert-rerank.js`):
-- `initBERT()` — lazy-loads ONNX model (119MB int8) + embedding matrix (74MB f16) via Transformers.js
+- `initBERT()` — lazy-loads ONNX model (85MB int4) + embedding matrix (74MB f16) via Transformers.js
 - `bertRerank(text, errorStart, errorEnd, candidates)` — masks misspelled word in context, runs single BERT forward pass, scores all candidates by cosine similarity
-- `BERT_WEIGHT = 15.0` (grid search peak for int8 ONNX)
+- `BERT_WEIGHT = 18.0` (grid search peak for int4 ONNX)
 - Transformers.js returns `BigInt64Array` for `input_ids` — must `Array.from(...).map(Number)`
 - Float16 embeddings converted via bit manipulation (no DataStream dependency)
 - `env.allowLocalModels = true` required (defaults to false in browser); `allowRemoteModels` left at default (true) so MarianMT can still load from HF Hub
 - E2E validated: `dure` → `dute` correctly re-ranked over `zure` (tied Tier 1 score, BERTeus broke tie)
-- Model files: `public/models/berteus/` (gitignored, 193MB total)
+- Model files: `public/models/berteus/` (gitignored, 159MB total: 85MB int4 + 74MB f16 embeddings)
 - `@wllama/wllama` dependency removed; `@huggingface/transformers` reused (already loaded for MarianMT)
 
 ---
