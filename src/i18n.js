@@ -8,7 +8,7 @@ export const i18n = {
       brand: 'Itzune',
     },
     hero: {
-      subtitle: 'Euskarazko testuaren maiuskulak, puntuazioa eta ortografia zuzentzen dituen tresna. Doakoa, pribatua — zure nabigatzailean exekutatzen da.',
+      subtitle: 'Euskarazko testuaren maiuskulak, puntuazioa, ortografia eta gramatika zuzentzen dituen tresna. Doakoa, pribatua — zure nabigatzailean exekutatzen da.',
     },
     features: {
       cap: 'Maiuskulak',
@@ -45,9 +45,12 @@ export const i18n = {
     },
     about: {
       title: 'Nola dabil?',
-      p1: 'Txukun-ek <a href="https://hitz.eus/" target="_blank" rel="noopener">HiTZ Zentroak</a> (UPV/EHU) garatutako <a href="https://huggingface.co/HiTZ/cap-punct-eu" target="_blank" rel="noopener">cap-punct-eu</a> adimen artifizialeko eredua erabiltzen du. Eredu hau 9.78 milioi euskarazko esaldirekin entrenatu da eta testuaren maiuskulak eta puntuazioa berreskuratzen ditu — adibidez, ahots-ezagutzatik ateratako testu gordina txukuntzeko.',
-      p2: 'Den-dena zure nabigatzailean gertatzen da. Zure testua <strong>ez da inoiz zure gailutik ateratzen</strong>. Eredua behin deskargatzen da eta cachean gordetzen da hurrengo bisitetarako.',
-      p3: '⚠️ Ereduak <strong>aluzinazioak</strong> sor ditzake — existitzen ez diren hitzak — bereziki testu labur edo arraroa sartzean. AI eredu sortzaile guztien berezko arazoa da. <strong>Auto-zuzenketa ez da AI bidezkoa</strong>: Hunspell ortografia-zuzentzailea eta Xuxen euskarazko hiztegia (142.000 sarrera + morfologia arauak) erabiltzen ditu.',
+      p1: 'Txukun-ek <strong>hiru eredu neuronal</strong> konbinatzen ditu euskal testua zuzentzeko, denak zure nabigatzailean exekutatzen direnak:',
+      p2: '<strong>1. Maiuskulak eta puntuazioa</strong> — <a href="https://hitz.eus/" target="_blank" rel="noopener">HiTZ Zentroak</a> (UPV/EHU) garatutako <a href="https://huggingface.co/HiTZ/cap-punct-eu" target="_blank" rel="noopener">cap-punct-eu</a> ereduak testu gordinari maiuskulak eta puntuazioa berreskuratzen dizkio (adibidez, ahots-ezagutzatik ateratako testua txukuntzeko).',
+      p3: '<strong>2. Ortografia</strong> — <a href="https://ixa.eus/" target="_blank" rel="noopener">IXA NLP Taldeak</a> (UPV/EHU) prestatutako <a href="https://huggingface.co/itzune/berteus-onnx" target="_blank" rel="noopener">BERTeus</a> ereduak hitz okerrak berriro ordenatzen ditu, testuingurua kontuan hartuta. Ez dago hiztegirik: ereduak esaldi osoa irakurtzen du erabaki hartzeko.',
+      p4: '<strong>3. Gramatika</strong> — <a href="https://github.com/itzune/gector-eus" target="_blank" rel="noopener">GECToR-eus</a> ereduak (Itzune-k entrenatua, <a href="https://www.orai.eus/" target="_blank" rel="noopener">Orai/Elhuyar</a>ren datu-multzoan oinarritua) akats gramatikalak zuzentzen ditu: aditz-komunikazioa (adib. <code>dit</code> → <code>zait</code>), kasua (<code>alderdiak</code> → <code>alderdiek</code>), denbora (<code>etortzen</code> → <code>etorriko</code>) eta atzizkiak (<code>delako</code> → <code>denaren</code>).',
+      p5: 'Den-dena zure nabigatzailean gertatzen da. Zure testua <strong>ez da inoiz zure gailutik ateratzen</strong>. Ereduak behin deskargatzen dira eta cachean gordetzen dira hurrengo bisitetarako.',
+      p6: '⚠️ Ereduak <strong>aluzinazioak</strong> sor ditzakete — existitzen ez diren hitzak — bereziki testu labur edo arraroa sartzean. AI eredu sortzaile guztien berezko arazoa da.',
     },
     toast: {
       modelReady: 'Eredua kargatu da! Orain testua zuzendu dezakezu.',
@@ -72,7 +75,7 @@ export const i18n = {
       brand: 'Itzune',
     },
     hero: {
-      subtitle: 'A tool that restores capitalization, punctuation and corrects spelling in Basque text. Free, private — runs in your browser.',
+      subtitle: 'A tool that restores capitalization, punctuation, spelling and grammar in Basque text. Free, private — runs in your browser.',
     },
     features: {
       cap: 'Capitalization',
@@ -109,9 +112,12 @@ export const i18n = {
     },
     about: {
       title: 'How does it work?',
-      p1: 'Txukun uses the <a href="https://huggingface.co/HiTZ/cap-punct-eu" target="_blank" rel="noopener">cap-punct-eu</a> AI model developed by <a href="https://hitz.eus/" target="_blank" rel="noopener">HiTZ Zentroa</a> (UPV/EHU). The model was trained on 9.78 million Basque sentences and restores capitalization and punctuation — for example, to clean up raw text from speech recognition.',
-      p2: 'Everything happens in your browser. Your text <strong>never leaves your device</strong>. The model is downloaded once and cached for future visits.',
-      p3: '⚠️ The model can produce <strong>hallucinations</strong> — made-up words — especially on short or unusual input. This is an inherent limitation of all generative AI models. <strong>Auto-correct is not AI-based</strong>: it uses Hunspell with the Xuxen Basque dictionary (142k words + morphology rules).',
+      p1: 'Txukun combines <strong>three neural models</strong> to correct Basque text, all running in your browser:',
+      p2: '<strong>1. Capitalization & punctuation</strong> — The <a href="https://huggingface.co/HiTZ/cap-punct-eu" target="_blank" rel="noopener">cap-punct-eu</a> model by <a href="https://hitz.eus/" target="_blank" rel="noopener">HiTZ Zentroa</a> (UPV/EHU) restores capitalization and punctuation to raw text (e.g. cleaning up speech recognition output).',
+      p3: '<strong>2. Spelling</strong> — The <a href="https://huggingface.co/itzune/berteus-onnx" target="_blank" rel="noopener">BERTeus</a> model by the <a href="https://ixa.eus/" target="_blank" rel="noopener">IXA NLP Group</a> (UPV/EHU) re-ranks misspelled words using full sentence context. No dictionary lookup — the model reads the whole sentence to decide.',
+      p4: '<strong>3. Grammar</strong> — The <a href="https://github.com/itzune/gector-eus" target="_blank" rel="noopener">GECToR-eus</a> model (trained by Itzune on <a href="https://www.orai.eus/" target="_blank" rel="noopener">Orai/Elhuyar</a>\'s dataset) fixes real-word grammar errors: verb agreement (e.g. <code>dit</code> → <code>zait</code>), case (<code>alderdiak</code> → <code>alderdiek</code>), tense (<code>etortzen</code> → <code>etorriko</code>), and suffixes (<code>delako</code> → <code>denaren</code>).',
+      p5: 'Everything happens in your browser. Your text <strong>never leaves your device</strong>. The models are downloaded once and cached for future visits.',
+      p6: '⚠️ The models can produce <strong>hallucinations</strong> — made-up words — especially on short or unusual input. This is an inherent limitation of all generative AI models.',
     },
     toast: {
       modelReady: 'Model loaded! You can now correct text.',

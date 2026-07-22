@@ -104,6 +104,14 @@ async function loadModel() {
     }
 
     setModelStatus('ready');
+
+    // Re-evaluate correct button: if user already typed text while model
+    // was loading, the button stayed disabled (it only enables on 'input' event).
+    const inputEl2 = document.getElementById('inputText');
+    if (inputEl2) {
+      const hasText = inputEl2.value.trim().length > 0;
+      setCorrectButtonEnabled(hasText && modelLoaded);
+    }
   } catch (err) {
     console.error('Failed to load model:', err);
     modelLoading = false;

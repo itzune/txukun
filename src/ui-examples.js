@@ -2,15 +2,30 @@
  * Txukun — Example sentences
  */
 
+/**
+ * Example sentences — from the Elhuyar/Orai GEC benchmark (Dem_single.tsv),
+ * with capitalization and punctuation destroyed (lowercased, punctuation
+ * stripped) so the full 3-model pipeline is demonstrated:
+ *   1. MarianMT restores capitalization + punctuation
+ *   2. BERTeus re-ranks spelling candidates
+ *   3. GECToR fixes real-word grammar errors (verb agreement, case, tense, suffix)
+ *
+ * Each example was cherrypicked by running it through the live pipeline and
+ * verifying the output matches the Orai dataset's gold correction.
+ */
 export const examplesEu = [
-  'kaixo egun on guztioi',
-  'faktoria e i te beko irratian entzuten da',
-  'gutxi gora behera ehuneko berrogeita bikoa',
-  'nire jaio urtea mila bederatziehun eta laurogeita hamasei da',
-  'informazio gehiago hitz puntu e hatxe u puntu eus web horrian',
-  'euskal herrian euskaraz bizi nahi dugu',
-  'atzoko bileran erabaki garrantzitsuak hartu genituen',
-  'astelehenean zortziretan geratuko gara plazan',
+  // R1 (tense): etortzen → etorriko
+  'karlismoaren babesa galdu ondoren jeltzaleen babesa etortzen zen',
+  // R2 (verb agreement): dit → zait
+  'asko gustatzen dit eta harreman ona dut sarearekin',
+  // R2 (verb agreement): dizu → zaizu  (+ proper noun + question mark)
+  'zer iruditzen dizu euskal herriko kultura musikala',
+  // R3 (case): alderdiak → alderdiek  (+ question mark)
+  'ezkerreko alderdiak nola babestu dezakete lege hau',
+  // R3 (case): udaltzainak → udaltzainek  (+ proper noun)
+  'eta udaltzainak beste lagun bat atzeman zuten gasteizen',
+  // R4 (suffix): delako → denaren
+  'nire jarduna lehen astean gertatzen delako araberakoa izango da',
 ];
 
 /**
