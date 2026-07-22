@@ -21,29 +21,46 @@
 - **Privacy-first** — everything runs in your browser, text never leaves your device
 - **Free & open-source** — built with open models and tools
 - **Basque-first** — UI available in Basque and English
-- **Fast** — model (~39MB quantized) is loaded once and cached
+- **Fast** — models are loaded once and cached
 
 - **Spell checking** — word-list–based Basque spell checker (160k words) with click-to-fix suggestions, enhanced by **BERTeus neural re-ranking** (int4 ONNX, 85 MB) for context-aware candidate selection
 - **Grammar correction** — GECToR edit-based grammar correction (int4 ONNX, ~85 MB) fixes real-word errors like verb agreement, case, tense, and suffix mistakes that spell check cannot detect
+- **Error detection heatmap** — GECToR's detection head flags suspected error words directly on the input text with a color-coded heatmap (amber → red by confidence), before any correction is applied
 
 ### Coming soon (Phase 2)
 
 - **Diff view** — see exactly what changed
 - **Real-time mode** — correct as you type
 
-## 🧠 Model
+## 🧠 Models
 
-Txukun uses **[itzune/txukun-cap-punct-eu](https://huggingface.co/itzune/txukun-cap-punct-eu)**, an ONNX int8 quantized export of [HiTZ/cap-punct-eu](https://huggingface.co/HiTZ/cap-punct-eu), a MarianMT model developed by [HiTZ Zentroa](https://hitz.eus/) (UPV/EHU):
+Txukun uses **three neural models**, each addressing a different layer of Basque text quality. All run entirely in the browser via ONNX Runtime (WASM):
 
-| Property | Value |
-|---|---|
-| Architecture | MarianMT (encoder-decoder Transformer) |
-| Parameters | ~77M |
-| Training data | 9.78M Basque sentences |
-| License | Apache 2.0 |
-| Quantized size | ~77 MB (int8 ONNX) |
+| # | Model | Role | Size | What it fixes |
+|---|---|---|---|---|
+| 1 | **[cap-punct-eu](https://huggingface.co/itzune/txukun-cap-punct-eu)** | Capitalization & punctuation | ~77 MB (int8) | Missing caps, periods, commas — e.g. `euskal herrian euskaraz bizi nahi dugu` → `Euskal Herrian euskaraz bizi nahi dugu.` |
+| 2 | **[berteus-onnx](https://huggingface.co/itzune/berteus-onnx)** | Spell-check re-ranking | 85 MB (int4) + 74 MB (f16 embeddings) | Picks the right correction when multiple candidates exist — e.g. `batzutan` → `batzuetan` (not `batsutan`) |
+| 3 | **[gector-eus](https://huggingface.co/itzune/gector-eus-onnx)** | Grammar correction + error detection | ~85 MB (int4) | Real-word grammar errors (wrong inflection) — e.g. `dio` → `zaio`, `zaidalaren` → `zaidalako` |
 
-### Spell-check re-ranking model
+Each model is **lazy-loaded** only when needed, so they add no cost to normal typing. All three degrade gracefully — if any model fails to load, the pipeline falls back to the previous tier.
+
+### Pipeline flow
+
+```
+Input text
+  │
+  ├─ 1. Spell check (Tier 1: dictionary + edit distance → Tier 2: BERTeus re-ranking)
+  ├─ 2. Cap-punct (MarianMT)
+  ├─ 3. Grammar correction (GECToR)
+  │     └─ also: error detection heatmap on input (GECToR detect head)
+  └─ 4. Spell check (remaining errors annotated)
+  │
+Output text
+```
+
+### Model 1 — Cap-punct (MarianMT)
+
+### Model 2 — BERTeus (spell re-ranking)
 
 For Tier 2 neural re-ranking, Txukun uses **[itzune/berteus-onnx](https://huggingface.co/itzune/berteus-onnx)** — an unofficial ONNX int4 conversion of [BERTeus](https://huggingface.co/ixa-ehu/berteus-base-cased), a monolingual Basque BERT model pre-trained on 224.6M tokens by the [IXA NLP Group](https://ixa.eus/) (UPV/EHU):
 
@@ -57,7 +74,7 @@ For Tier 2 neural re-ranking, Txukun uses **[itzune/berteus-onnx](https://huggin
 
 The model is lazy-loaded only when a spell error with ≥2 candidates is found.
 
-### Grammar correction model
+### Model 3 — GECToR (grammar correction + detection)
 
 For Tier 3 grammar correction, Txukun uses a **GECToR** (edit-based grammatical error correction) model fine-tuned on **RoBERTa-eus-base** (`ixa-ehu/roberta-eus-euscrawl-base-cased`), trained on 1M sentence pairs from the [Elhuyar GEC corpus](https://hitz.eus/es/geleriak/corpus-and-resources/erreparatu-corpus). The model is exported to ONNX int4 for browser deployment:
 
@@ -70,7 +87,11 @@ For Tier 3 grammar correction, Txukun uses a **GECToR** (edit-based grammatical 
 | Usage | Edit-based correction ($KEEP/$DELETE/$REPLACE/$APPEND), iterative (up to 5 passes) |
 | License | CC-BY-NC-SA (Elhuyar training data) — see license section below |
 
-The model corrects **real-word grammar errors** — cases where every word is a valid dictionary word but the inflection is wrong in context (e.g. `zaidalaren` → `zaidalako`, `dio` → `zaio`). Spell check cannot detect these because all inflected forms are valid Basque words.
+The model has **two heads** trained jointly, giving it two capabilities:
+
+1. **Correction (Tier 3):** The label head predicts edit operations ($KEEP/$DELETE/$REPLACE/$APPEND) per token. This fixes real-word grammar errors — cases where every word is a valid dictionary word but the inflection is wrong in context (e.g. `zaidalaren` → `zaidalako`, `dio` → `zaio`).
+
+2. **Detection (Tier 2.5):** The detect head predicts P(INCORRECT) per token — a confidence score for whether each word is wrong. This powers the **input heatmap**: after correction, the input text is overlaid with color-coded highlights (transparent → amber → red by confidence) showing which words the model suspected were errors. On the Elhuyar benchmark, the detect head achieves F1=95.0% and 99.5% locate accuracy (finds the exact error word).
 
 The model is lazy-loaded in the background after the main pipeline initializes.
 
@@ -92,6 +113,8 @@ Spell correction runs in **two tiers**:
 
 3. **Tier 3 — Grammar correction (GECToR):** After cap-punct and spell check, a **GECToR** model fine-tuned on RoBERTa-eus-base detects and corrects **real-word grammar errors** — cases where every word is a valid dictionary word but the inflection is wrong in context (e.g. `zaidalaren` → `zaidalako`, `dio` → `zaio`). The model uses an edit-based approach ($KEEP/$DELETE/$REPLACE/$APPEND) with iterative prediction (up to 5 passes) and a detection threshold to avoid overcorrection.
 
+4. **Error detection heatmap (GECToR detect head):** The same GECToR model's detect head provides a per-word P(INCORRECT) confidence score. After correction, the input text is overlaid with a **color-coded heatmap** — words the model suspects are wrong are highlighted from amber (low confidence) to red (high confidence). This gives instant visual feedback on which words the model flagged, before the user even looks at the output.
+
 The BERTeus and GECToR models are **lazy-loaded** only when needed, so they add no cost to normal typing.
 
 ### 🟦 Scope
@@ -107,9 +130,9 @@ Txukun is designed to **degrade gracefully** — if any component fails, the pip
 | **MarianMT cap-punct** | Model fails to load | Toast notification shown; correction disabled. Text passes through unmodified. |
 | **MarianMT hallucination** | Model invents a word substitution (e.g. `Nire`→`Auzo`) | `constrainCapPunct()` compares input vs. output token-by-token: if the lowercase word form differs, the substitution is **rejected** and the original word is kept. If the token count changes, the entire line is rejected. Only capitalization/punctuation changes pass through. |
 | **BERTeus re-ranker** | Model fails to load or errors | `bertRerank()` returns all-zero scores → candidates are ranked by **Tier 1 frequency alone** (the pre-BERTeus behavior). No crash, no broken output. |
-| **GECToR grammar** | Model fails to load or errors | `correctGrammar()` returns the original text unchanged. Grammar correction is silently skipped — text still gets cap-punct + spell correction. |
+| **GECToR grammar** | Model fails to load or errors | `correctGrammar()` returns the original text unchanged. Grammar correction is silently skipped — text still gets cap-punct + spell correction. | |
 | **Spell worker** | WASM Hunspell fails to init | Spell checking disabled; text still gets cap-punct + grammar correction. |
-| **Empty input / model not ready** | — | Toast warning; no processing attempted. |
+| **GECToR detection** | Detection forward pass errors | `detectGrammar()` returns empty detections — no heatmap shown. Correction still runs normally. |
 
 The net effect: **the worst case is that text comes out with only cap-punct correction and dictionary-frequency spell fixes** — never corrupted, never empty. GECToR can be disabled via `?grammar=0` URL parameter.
 
@@ -143,7 +166,7 @@ txukun/
 │   ├── spell.js            # Spell checking, candidate generation (Tier 1), BERTeus integration
 │   ├── spell-worker.js     # WASM Hunspell worker (dictionary lookup + Levenshtein)
 │   ├── bert-rerank.js      # BERTeus neural re-ranking (Tier 2, lazy-loaded, int4 ONNX)
-│   ├── gector.js           # GECToR grammar correction (Tier 3, lazy-loaded, int4 ONNX)
+│   ├── gector.js           # GECToR grammar correction (Tier 3) + error detection (Tier 2.5, int4 ONNX)
 │   ├── i18n.js             # Basque/English translations
 │   ├── ui-bindings.js      # DOM bindings, buttons, status
 │   ├── ui-examples.js      # Example sentences
@@ -167,6 +190,8 @@ txukun/
 - [itzune/berteus-onnx](https://huggingface.co/itzune/berteus-onnx) — BERTeus int4 ONNX (spell-check re-ranking)
 - [ixa-ehu/berteus-base-cased](https://huggingface.co/ixa-ehu/berteus-base-cased) — Original BERTeus model (IXA NLP Group)
 - [ixa-ehu/roberta-eus-euscrawl-base-cased](https://huggingface.co/ixa-ehu/roberta-eus-euscrawl-base-cased) — RoBERTa-eus-base (GECToR base model)
+- **[gector-eus](https://github.com/itzune/gector-eus)** — Basque GECToR training (RoBERTa-eus-base + Elhuyar GEC)
+- [itzune/gector-eus-onnx](https://huggingface.co/itzune/gector-eus-onnx) — GECToR int4 ONNX (grammar correction + detection)
 - [gotutiyan/gector](https://github.com/gotutiyan/gector) — GECToR PyTorch implementation
 - [Elhuyar GEC corpus](https://hitz.eus/es/geleriak/corpus-and-resources/erreparatu-corpus) — Basque GEC training data (CC-BY-NC-SA)
 

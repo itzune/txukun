@@ -928,6 +928,21 @@
       background: rgba(75, 184, 232, 0.25);
       color: var(--color-ghost-white);
     }
+
+    /* ═════════════════════════════════════════════
+       GRAMMAR DETECTION HEATMAP
+       Background colors on input words reflect GECToR's
+       P(INCORRECT) per word — transparent → amber → red.
+       ═════════════════════════════════════════════ */
+
+    .spell-overlay--heatmap .spell-overlay__content {
+      pointer-events: none;
+    }
+
+    .heatmap-word {
+      border-radius: 2px;
+      padding: 1px 0;
+    }
   </style>
 </head>
 <body>

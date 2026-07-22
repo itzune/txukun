@@ -250,6 +250,54 @@ async function predictTokenLabels(inputIds, attentionMask, wordIds) {
   return predLabelIds;
 }
 
+// ── Detection-only prediction ──────────────────────
+
+/**
+ * Run a detection-only forward pass — returns per-word P(INCORRECT).
+ * Lighter than predictTokenLabels: skips the label softmax over ~4500
+ * classes. Used by detectGrammar() for the input heatmap.
+ */
+async function predictDetection(inputIds, attentionMask, wordIds) {
+  const seqLen = inputIds.length;
+
+  const inputIdsTensor = new Tensor(
+    'int64',
+    BigInt64Array.from(inputIds.map(BigInt)),
+    [1, seqLen]
+  );
+  const attentionMaskTensor = new Tensor(
+    'int64',
+    BigInt64Array.from(attentionMask.map(BigInt)),
+    [1, seqLen]
+  );
+
+  const outputs = await session.run({
+    input_ids: inputIdsTensor,
+    attention_mask: attentionMaskTensor,
+  });
+
+  const logitsD = outputs.logits_d.data;
+  const dNumLabels = vocab.d_num_labels - 1;
+  const incorIdx = vocab.d_label2id[vocab.incorrect_label];
+
+  // Compute P(INCORRECT) for the first subword of each word
+  const wordMasks = buildWordMasks(wordIds);
+  const wordDetections = [];
+
+  for (let t = 0; t < seqLen; t++) {
+    if (wordMasks[t] !== 1) continue;
+    const { exps, sumExp } = softmax(logitsD, t * dNumLabels, dNumLabels);
+    const pIncor = exps[incorIdx] / sumExp;
+
+    const wid = wordIds[t];
+    if (wid !== null && wid > 0) {  // skip $START (wid=0) and special tokens
+      wordDetections.push({ wordIdx: wid - 1, pIncorrect: pIncor });
+    }
+  }
+
+  return wordDetections;
+}
+
 // ── Align token labels to words ─────────────────────
 
 function alignToWords(predLabelIds, wordIds) {
@@ -357,4 +405,61 @@ export async function correctGrammar(text) {
 
   const corrected = detokenizePunctuation(currentText);
   return { corrected, changed: corrected !== text };
+}
+
+/**
+ * Detect grammar errors in text using GECToR's detect head.
+ *
+ * Single forward pass — returns per-word P(INCORRECT) scores aligned
+ * to character positions in the original text. Does NOT apply corrections.
+ *
+ * Powers the input heatmap: highlights words the model suspects are
+ * wrong, even before correction is applied.
+ *
+ * @param {string} text  input text
+ * @returns {Promise<{detections: Array<{word, pIncorrect, start, end}>}>}
+ *   detections sorted by position. Empty if model not available.
+ */
+export async function detectGrammar(text) {
+  if (!isGectorReady()) {
+    await initGector();
+    if (!isGectorReady()) return { detections: [] };
+  }
+
+  const maxLen = vocab.max_length || 128;
+
+  // Tokenize input into words with character positions.
+  // Whitespace splitting — GECToR handles subword tokenization internally.
+  const wordTokens = [];
+  const re = /\S+/g;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    wordTokens.push({
+      word: match[0],
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+  }
+
+  if (wordTokens.length === 0) return { detections: [] };
+
+  // Prepare GECToR input (prepend $START)
+  const words = ['$START', ...wordTokens.map(w => w.word)];
+  const { inputIds, wordIds } = tokenizeWithWordIds(words, maxLen);
+  const attentionMask = new Array(inputIds.length).fill(1);
+
+  // Run detection-only forward pass
+  const wordDetections = await predictDetection(inputIds, attentionMask, wordIds);
+
+  // Map detection scores to original text positions
+  const detections = wordDetections
+    .filter(d => d.wordIdx < wordTokens.length)
+    .map(d => ({
+      word: wordTokens[d.wordIdx].word,
+      pIncorrect: d.pIncorrect,
+      start: wordTokens[d.wordIdx].start,
+      end: wordTokens[d.wordIdx].end,
+    }));
+
+  return { detections };
 }

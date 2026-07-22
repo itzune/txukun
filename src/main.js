@@ -22,7 +22,7 @@ import {
 } from './ui-bindings.js';
 import { renderExamples, bindExampleClicks } from './ui-examples.js';
 import { loadSpellChecker, checkSpelling, autoCorrect, annotateWithCorrections, annotateSpelling, stripAnnotations } from './spell.js';
-import { correctGrammar, initGector, isGectorReady, isGectorFailed } from './gector.js';
+import { correctGrammar, detectGrammar, initGector, isGectorReady, isGectorFailed } from './gector.js';
 
 console.log('[DEBUG] txukun main.js loaded');
 
@@ -111,6 +111,71 @@ async function loadModel() {
     setProgress(0);
 
     toast(t('toast.modelError', currentLang) + ': ' + err.message, 'error');
+  }
+}
+
+// ── Grammar Detection Heatmap ──────────────────
+
+/**
+ * Map P(INCORRECT) ∈ [0, 1] to a heatmap background color.
+ * Transparent below 0.15; interpolates amber → red with increasing alpha.
+ */
+function heatmapColor(p) {
+  if (p < 0.15) return 'transparent';
+  const t = (p - 0.15) / 0.85;  // normalize to [0, 1]
+  const r = Math.round(245 + (232 - 245) * t);
+  const g = Math.round(160 + (72 - 160) * t);
+  const b = Math.round(32 + (50 - 32) * t);
+  const a = (0.08 + 0.32 * t).toFixed(2);
+  return `rgba(${r}, ${g}, ${b}, ${a})`;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/**
+ * Render a heatmap on the input overlay — each word's background color
+ * reflects GECToR's detection confidence (P(INCORRECT)).
+ */
+function renderInputHeatmap(text, detections) {
+  const overlay = document.getElementById('inputSpellOverlay');
+  const content = document.getElementById('inputSpellContent');
+  const textarea = document.getElementById('inputText');
+  if (!overlay || !content) return;
+
+  const sorted = [...detections].sort((a, b) => a.start - b.start);
+
+  let html = '';
+  let cursor = 0;
+  for (const det of sorted) {
+    if (det.start < cursor) continue;  // skip overlapping
+    html += escapeHtml(text.slice(cursor, det.start));
+    const color = heatmapColor(det.pIncorrect);
+    const pct = (det.pIncorrect * 100).toFixed(0);
+    html += `<span class="heatmap-word" style="background: ${color};" title="Akats konfiantza: ${pct}%">${escapeHtml(det.word)}</span>`;
+    cursor = det.end;
+  }
+  html += escapeHtml(text.slice(cursor));
+
+  content.innerHTML = html;
+  overlay.classList.add('spell-overlay--heatmap');
+  overlay.style.display = 'block';
+
+  // Sync scroll position with textarea
+  if (textarea) {
+    overlay.scrollTop = textarea.scrollTop;
+    overlay.scrollLeft = textarea.scrollLeft;
+  }
+}
+
+function hideInputHeatmap() {
+  const overlay = document.getElementById('inputSpellOverlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+    overlay.classList.remove('spell-overlay--heatmap');
   }
 }
 
@@ -249,6 +314,19 @@ async function correctText() {
       if (grammarResult.changed) {
         console.log('[DEBUG] GECToR:', JSON.stringify({ input: output, output: grammarResult.corrected }));
         output = grammarResult.corrected;
+      }
+
+      // GECToR detection heatmap (Tier 2.5) — per-word P(INCORRECT) on
+      // the input text. Model is loaded now (correctGrammar triggered it).
+      if (isGectorReady()) {
+        try {
+          const { detections } = await detectGrammar(input);
+          if (detections.length > 0) {
+            renderInputHeatmap(input, detections);
+          }
+        } catch (e) {
+          console.warn('[txukun] detection heatmap failed:', e);
+        }
       }
     }
 
@@ -427,10 +505,27 @@ async function init() {
       const hasText = inputEl.value.trim().length > 0;
       setCorrectButtonEnabled(hasText && modelLoaded);
 
+      // Hide heatmap overlay when user edits
+      hideInputHeatmap();
+
       // Update output char count
       const outputEl = document.getElementById('outputText');
       if (outputEl) {
         document.getElementById('outputCharCount').textContent = outputEl.value.length;
+      }
+    });
+
+    // Hide heatmap when user focuses the textarea (to edit)
+    inputEl.addEventListener('focus', () => {
+      hideInputHeatmap();
+    });
+
+    // Sync heatmap overlay scroll with textarea
+    inputEl.addEventListener('scroll', () => {
+      const overlay = document.getElementById('inputSpellOverlay');
+      if (overlay && overlay.style.display !== 'none') {
+        overlay.scrollTop = inputEl.scrollTop;
+        overlay.scrollLeft = inputEl.scrollLeft;
       }
     });
   }
