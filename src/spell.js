@@ -275,6 +275,51 @@ export function rankCandidates(typed, hunspellSuggestions, fmap) {
   return ranked.length > 0 ? ranked[0] : null;
 }
 
+/**
+ * Full two-tier re-ranking for a spell error, using the surrounding text
+ * for BERTeus bidirectional context.
+ *
+ *   Tier 1 (fast): frequency + edit distance via getRankedCandidates().
+ *   Tier 2 (slow): BERTeus masked embedding similarity, lazy-loaded.
+ *
+ * The BERT model is only invoked when ≥2 candidates exist and BERT is
+ * ready (or can be loaded). If BERT is unavailable, degrades to Tier 1.
+ *
+ * @param {string} fullText   full plain-text context (for BERTeus)
+ * @param {{word:string, start:number, end:number, suggestions:string[]}} err
+ * @returns {Promise<{word:string, score:number}|null>}
+ */
+export async function getBestCorrection(fullText, err) {
+  const ranked = getRankedCandidates(err.word, err.suggestions, freqMap);
+  if (ranked.length === 0) return null;
+  let best = ranked[0];
+
+  // Tier 2: BERTeus re-ranking when multiple candidates exist.
+  if (ranked.length >= 2) {
+    let bert = null;
+    try { bert = await getBERT(); } catch (e) { /* degrade to Tier 1 */ }
+    if (bert && !bert.isBERTFailed()) {
+      if (!bert.isBERTReady()) {
+        await bert.initBERT();
+      }
+      if (bert.isBERTReady()) {
+        const candidates = ranked.slice(0, 5).map(c => c.word.toLowerCase());
+        const bertScores = await bert.bertRerank(fullText, err.start, err.end, candidates);
+        let bestCombined = -Infinity;
+        for (let i = 0; i < ranked.length && i < bertScores.length; i++) {
+          const combined = ranked[i].score + bert.BERT_WEIGHT * bertScores[i];
+          if (combined > bestCombined) {
+            bestCombined = combined;
+            best = ranked[i];
+          }
+        }
+      }
+    }
+  }
+
+  return best;
+}
+
 // BERTeus re-ranking is loaded dynamically (lazy) so the 193MB model
 // bundle (119MB ONNX + 74MB embeddings) is only fetched when a spell
 // error with multiple candidates is first encountered. See bert-rerank.js.
@@ -442,43 +487,9 @@ export async function autoCorrect(text) {
   let result = text;
   const corrections = [];
   for (const err of sorted) {
-    const ranked = getRankedCandidates(err.word, err.suggestions, freqMap);
-    let best = ranked.length > 0 ? ranked[0] : null;
-
-    // Tier 2: BERTeus re-ranking when multiple candidates exist and BERT is ready.
-    if (ranked.length >= 2) {
-      let bert = null;
-      try { bert = await getBERT(); } catch (e) { console.warn('[spell] BERT module load failed:', e); }
-      if (bert && !bert.isBERTFailed()) {
-        if (!bert.isBERTReady()) {
-          // First use: block until BERT loads so this correction benefits from Tier 2.
-          console.log('[DEBUG] BERT loading (first use)...');
-          await bert.initBERT();
-        }
-        if (bert.isBERTReady()) {
-          const candidates = ranked.slice(0, 5).map(c => c.word.toLowerCase());
-          // BERTeus needs full text + error position for bidirectional context
-          const bertScores = await bert.bertRerank(result, err.start, err.end, candidates);
-
-          // Combined score = tier1 + BERT_WEIGHT × cosine_sim
-          let bestCombined = -Infinity;
-          for (let i = 0; i < ranked.length && i < bertScores.length; i++) {
-            const combined = ranked[i].score + bert.BERT_WEIGHT * bertScores[i];
-            if (combined > bestCombined) {
-              bestCombined = combined;
-              best = ranked[i];
-            }
-          }
-          console.log('[DEBUG] BERT rerank:', JSON.stringify({
-            word: err.word,
-            candidates: ranked.slice(0, 5).map((c, i) => ({
-              word: c.word, tier1: c.score.toFixed(2), bert: bertScores[i]?.toFixed(4), combined: (c.score + bert.BERT_WEIGHT * (bertScores[i] || 0)).toFixed(2)
-            })),
-            winner: best?.word,
-          }));
-        }
-      }
-    }
+    // Use the shared two-tier re-ranking (Tier 1 freq + Tier 2 BERTeus).
+    // Pass `result` (partially corrected) so BERTeus sees up-to-date context.
+    const best = await getBestCorrection(result, err);
 
     if (best) {
       const original = err.word;

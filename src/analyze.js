@@ -218,7 +218,7 @@ function buildContext(plainText, from) {
 }
 
 import { correctCapPunct, isModelReady, isSpellReady } from './models.js';
-import { checkSpelling } from './spell.js';
+import { checkSpelling, getBestCorrection } from './spell.js';
 import { correctGrammar, detectGrammar, isGectorReady, initGector } from './gector.js';
 
 let errCounter = 0;
@@ -323,8 +323,12 @@ async function detectSpellingErrors(text) {
 
     for (const err of spellErrors) {
       if (!err.suggestions || err.suggestions.length === 0) continue;
+      // Use the shared two-tier re-ranking (Tier 1 freq + Tier 2 BERTeus)
+      // instead of blindly taking Hunspell's suggestions[0].
+      const best = await getBestCorrection(text, err);
+      if (!best) continue;
       const original = text.slice(err.start, err.end);
-      const suggestion = err.suggestions[0];
+      const suggestion = best.word;
       if (suggestion === original) continue;
       errors.push({
         id: nextId(),
