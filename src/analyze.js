@@ -28,14 +28,21 @@
  * Strips: headings, bold, italic, strikethrough, inline code, links,
  * images, blockquotes, list markers, horizontal rules, code fences.
  *
+ * Also returns `headingRanges`: plain-text [start, end] offsets for each
+ * heading line's content, so callers can suppress punctuation hints
+ * inside headings (which shouldn't get trailing dots).
+ *
  * @param {string} md - Raw markdown source
- * @returns {{ text: string, map: number[] }} plain text + map[plainIdx] = mdIdx
+ * @returns {{ text: string, map: number[], headingRanges: Array<[number, number]> }}
  */
 function stripMarkdown(md) {
   let plain = '';
   const map = [];
   let i = 0;
   let inCodeBlock = false;
+  let inHeading = false;
+  let headingStart = 0;
+  const headingRanges = [];
   const len = md.length;
 
   while (i < len) {
@@ -64,7 +71,11 @@ function stripMarkdown(md) {
 
       // Heading markers (# to ######)
       const h = md.slice(j).match(/^#{1,6}\s+/);
-      if (h) j += h[0].length;
+      if (h) {
+        j += h[0].length;
+        inHeading = true;
+        headingStart = plain.length;
+      }
 
       // List markers (- * + or 1.)
       const l = md.slice(j).match(/^([-*+]\s+|\d+\.\s+)/);
@@ -174,12 +185,22 @@ function stripMarkdown(md) {
     }
 
     // ── Regular character ──
+    // Record heading range at end of heading line (before the newline).
+    if (md[i] === '\n' && inHeading) {
+      headingRanges.push([headingStart, plain.length]);
+      inHeading = false;
+    }
     plain += md[i];
     map.push(i);
     i++;
   }
 
-  return { text: plain, map };
+  // Heading at EOF (no trailing newline)
+  if (inHeading) {
+    headingRanges.push([headingStart, plain.length]);
+  }
+
+  return { text: plain, map, headingRanges };
 }
 
 /**
@@ -237,15 +258,15 @@ const nextId = () => `e${++errCounter}`;
 export async function analyzeText(mdText) {
   if (!mdText || !mdText.trim()) return [];
 
-  // Strip markdown → plain text + offset map
-  const { text: plainText, map } = stripMarkdown(mdText);
+  // Strip markdown → plain text + offset map + heading ranges
+  const { text: plainText, map, headingRanges } = stripMarkdown(mdText);
   if (!plainText.trim()) return [];
 
   // Run the three detectors SEQUENTIALLY on plain text — ONNX Runtime
   // Web (WASM) cannot execute multiple sessions concurrently.
   const grammarErrors = await detectGrammarErrors(plainText);
   const spellingErrors = await detectSpellingErrors(plainText);
-  const capPunctErrors = await detectCapPunctErrors(plainText);
+  const capPunctErrors = await detectCapPunctErrors(plainText, headingRanges);
 
   // Build context snippets (in plain text, paragraph-bounded) BEFORE
   // mapping offsets to markdown. This keeps context clean (no markdown
@@ -354,7 +375,7 @@ async function detectSpellingErrors(text) {
 // (not word substitutions, which constrainCapPunct already filtered)
 // become 'cappunct' suggestions.
 
-async function detectCapPunctErrors(text) {
+async function detectCapPunctErrors(text, headingRanges = []) {
   const errors = [];
   try {
     if (!isModelReady()) return errors;
@@ -365,6 +386,14 @@ async function detectCapPunctErrors(text) {
     for (const ch of changes) {
       if (ch.type !== 'replace') continue;
       if (!isCasePunctOnly(ch.fromText, ch.toText)) continue;
+      // Ignore punctuation hints inside heading lines — headings
+      // shouldn't get trailing dots or other punctuation additions.
+      // Pure capitalization hints (e.g. "nire" → "Nire") are kept.
+      if (
+        isInHeading(ch.fromOffset, headingRanges) &&
+        ch.fromText.toLowerCase() !== ch.toText.toLowerCase()
+      )
+        continue;
       errors.push({
         id: nextId(),
         from: ch.fromOffset,
@@ -508,6 +537,19 @@ function isCasePunctOnly(a, b) {
   if (a === b) return false;
   const strip = (s) => s.replace(/[^\p{L}]/gu, '').toLowerCase();
   return strip(a) === strip(b) && strip(a).length > 0;
+}
+
+/**
+ * Check whether a plain-text offset falls within a heading line.
+ * @param {number} offset - plain-text offset
+ * @param {Array<[number, number]>} headingRanges - [start, end] ranges
+ * @returns {boolean}
+ */
+function isInHeading(offset, headingRanges) {
+  for (const [start, end] of headingRanges) {
+    if (offset >= start && offset < end) return true;
+  }
+  return false;
 }
 
 // ── Overlap resolution ───────────────────────────────────────────────
