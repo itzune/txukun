@@ -140,6 +140,12 @@ function constrainCapPunct(inputLine, outputLine) {
       if (outTok.length > 1 && outTok === outTok.toUpperCase() && inputTokens[i] !== inputTokens[i].toUpperCase()) {
         outTok = inputTokens[i];
       }
+      // Reject hallucinated repeated punctuation: if the output token is
+      // significantly longer than the input, it's hallucination (e.g.
+      // 'nahi?' → 'nahi???...???'). Cap-punct only adds 1-2 chars max.
+      if (outTok.length > inputTokens[i].length + 3) {
+        outTok = inputTokens[i];
+      }
       result.push(outTok);
       matched++;
       i++;
