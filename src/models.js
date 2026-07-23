@@ -109,7 +109,7 @@ function constrainCapPunct(inputLine, outputLine) {
   const n = aNorm.length;
   const m = bNorm.length;
 
-  if (n === 0) return inputLine;
+  if (n === 0) return { text: inputLine, matchRate: 1.0 };
 
   // LCS DP table
   const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
@@ -125,12 +125,23 @@ function constrainCapPunct(inputLine, outputLine) {
   // Walk alignment: use output token where matched (accepts cap/punct
   // changes), keep input token where unmatched (rejects substitution),
   // skip hallucinated output tokens.
+  //
+  // Reject all-caps hallucinations: if output is all-uppercase (len > 1)
+  // but input was not, keep the input token's casing. The cap-punct model
+  // should only capitalize first letters, never convert entire words to
+  // uppercase (e.g. 'esker' → 'ESKER' is always wrong).
   const result = [];
+  let matched = 0;
   let i = 0;
   let j = 0;
   while (i < n && j < m) {
     if (aNorm[i] === bNorm[j]) {
-      result.push(outputTokens[j]);
+      let outTok = outputTokens[j];
+      if (outTok.length > 1 && outTok === outTok.toUpperCase() && inputTokens[i] !== inputTokens[i].toUpperCase()) {
+        outTok = inputTokens[i];
+      }
+      result.push(outTok);
+      matched++;
       i++;
       j++;
     } else if (dp[i + 1][j] >= dp[i][j + 1]) {
@@ -144,7 +155,8 @@ function constrainCapPunct(inputLine, outputLine) {
     result.push(inputTokens[i]);
     i++;
   }
-  return result.join(' ');
+  const matchRate = n > 0 ? matched / n : 1.0;
+  return { text: result.join(' '), matchRate };
 }
 
 /**
@@ -209,10 +221,11 @@ function splitIntoSegments(text) {
  * @returns {Promise<string>}
  */
 export async function correctCapPunct(text) {
-  if (!modelLoaded || !correctorPipeline) return text;
+  if (!modelLoaded || !correctorPipeline) return { corrected: text, matchRate: 1.0 };
 
   const segments = splitIntoSegments(text);
   const results = [];
+  const matchRates = [];
   for (const seg of segments) {
     if (!seg.text) {
       results.push({ text: '', sep: seg.sep });
@@ -223,7 +236,13 @@ export async function correctCapPunct(text) {
     corrected = corrected
       .replace(/<\/?s>/g, '').replace(/<pad>/g, '').replace(/<unk>/g, '')
       .replace(/\s{2,}/g, ' ').trim();
-    results.push({ text: constrainCapPunct(seg.text, corrected) || seg.text, sep: seg.sep });
+    const { text: constrained, matchRate } = constrainCapPunct(seg.text, corrected);
+    results.push({ text: constrained || seg.text, sep: seg.sep });
+    matchRates.push(matchRate);
   }
-  return results.map((r) => r.text + r.sep).join('').trimEnd();
+  const corrected = results.map((r) => r.text + r.sep).join('').trimEnd();
+  const avgMatchRate = matchRates.length > 0
+    ? matchRates.reduce((a, b) => a + b, 0) / matchRates.length
+    : 1.0;
+  return { corrected, matchRate: avgMatchRate };
 }

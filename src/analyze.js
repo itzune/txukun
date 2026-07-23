@@ -323,9 +323,24 @@ async function detectGrammarErrors(text) {
     const { corrected } = await correctGrammar(text);
     if (!corrected || corrected === text) return errors;
 
+    // Get per-word P(INCORRECT) from detection head for confidence
+    let detections = [];
+    try {
+      const det = await detectGrammar(text);
+      detections = det.detections || [];
+    } catch (e) { /* detection optional */ }
+
     const changes = diffWords(text, corrected);
     for (const ch of changes) {
       if (ch.type !== 'replace') continue; // insertions/deletions rare in GECToR-eus
+      // Find detection confidence for this word
+      let conf = null;
+      for (const d of detections) {
+        if (d.start === ch.fromOffset && d.end === ch.toOffset) {
+          conf = d.pIncorrect;
+          break;
+        }
+      }
       errors.push({
         id: nextId(),
         from: ch.fromOffset,
@@ -335,6 +350,7 @@ async function detectGrammarErrors(text) {
         category: 'grammar',
         title: grammarTitle(ch.fromText, ch.toText),
         status: 'pending',
+        confidence: conf,
       });
     }
   } catch (err) {
@@ -368,6 +384,11 @@ async function detectSpellingErrors(text) {
       const original = text.slice(err.start, err.end);
       const suggestion = best.word;
       if (suggestion === original) continue;
+      // BERTeus cosine similarity as confidence (normalize to 0–1)
+      let conf = null;
+      if (best.bertScore !== undefined && best.bertScore !== null) {
+        conf = (best.bertScore + 1.0) / 2.0;
+      }
       errors.push({
         id: nextId(),
         from: err.start,
@@ -377,6 +398,7 @@ async function detectSpellingErrors(text) {
         category: 'spelling',
         title: 'Ortografia',
         status: 'pending',
+        confidence: conf,
       });
     }
   } catch (err) {
@@ -396,7 +418,7 @@ async function detectCapPunctErrors(text, headingRanges = []) {
   const errors = [];
   try {
     if (!isModelReady()) return errors;
-    const corrected = await correctCapPunct(text);
+    const { corrected, matchRate } = await correctCapPunct(text);
     if (!corrected || corrected === text) return errors;
 
     const changes = diffWords(text, corrected);
@@ -420,6 +442,7 @@ async function detectCapPunctErrors(text, headingRanges = []) {
         category: 'cappunct',
         title: capPunctTitle(ch.fromText, ch.toText),
         status: 'pending',
+        confidence: matchRate,
       });
     }
   } catch (err) {

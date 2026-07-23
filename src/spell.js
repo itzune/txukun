@@ -307,6 +307,7 @@ export async function getBestCorrection(fullText, err) {
         const bertScores = await bert.bertRerank(fullText, err.start, err.end, candidates);
         let bestCombined = -Infinity;
         for (let i = 0; i < ranked.length && i < bertScores.length; i++) {
+          ranked[i].bertScore = bertScores[i];
           const combined = ranked[i].score + bert.BERT_WEIGHT * bertScores[i];
           if (combined > bestCombined) {
             bestCombined = combined;
