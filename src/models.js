@@ -126,18 +126,20 @@ function constrainCapPunct(inputLine, outputLine) {
   // changes), keep input token where unmatched (rejects substitution),
   // skip hallucinated output tokens.
   //
-  // Reject all-caps hallucinations: if output is all-uppercase (len > 1)
-  // but input was not, keep the input token's casing. The cap-punct model
-  // should only capitalize first letters, never convert entire words to
-  // uppercase (e.g. 'esker' → 'ESKER' is always wrong).
+  // All-caps changes are tentatively rejected (could be hallucination
+  // like 'esker'→'ESKER') but remembered. After computing match rate,
+  // if it's high (model working well), they're restored as legit
+  // acronym corrections (e.g. 'eebb'→'EEBB', 'nato'→'NATO').
   const result = [];
   let matched = 0;
+  const pendingCaps = []; // {idx, outTok}
   let i = 0;
   let j = 0;
   while (i < n && j < m) {
     if (aNorm[i] === bNorm[j]) {
       let outTok = outputTokens[j];
       if (outTok.length > 1 && outTok === outTok.toUpperCase() && inputTokens[i] !== inputTokens[i].toUpperCase()) {
+        pendingCaps.push({ idx: result.length, outTok });
         outTok = inputTokens[i];
       }
       // Reject hallucinated repeated punctuation: if the output token is
@@ -162,6 +164,13 @@ function constrainCapPunct(inputLine, outputLine) {
     i++;
   }
   const matchRate = n > 0 ? matched / n : 1.0;
+  // If match rate is high, model is working well — restore legit
+  // acronym capitalizations (e.g. 'eebb' → 'EEBB').
+  if (matchRate >= 0.7) {
+    for (const { idx, outTok } of pendingCaps) {
+      result[idx] = outTok;
+    }
+  }
   return { text: result.join(' '), matchRate };
 }
 
