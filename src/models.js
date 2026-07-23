@@ -90,22 +90,59 @@ export async function loadModels() {
 
 /**
  * Constrain MarianMT output to ONLY capitalization + punctuation changes.
- * Rejects word substitutions (hallucinations) by comparing lowercase forms.
+ * Rejects word substitutions (hallucinations) by aligning input and
+ * output tokens via LCS on lowercased alphanumeric content.
+ *
+ * Unlike the previous positional approach (which bailed out entirely
+ * when token counts differed — losing ALL valid corrections), this
+ * alignment-based version accepts valid cap/punct changes on matched
+ * tokens and keeps original text for unmatched (hallucinated) ones.
  */
 function constrainCapPunct(inputLine, outputLine) {
   const inputTokens = inputLine.match(/\S+/g) || [];
   const outputTokens = outputLine.match(/\S+/g) || [];
-  if (inputTokens.length !== outputTokens.length) return inputLine;
 
-  const result = [];
-  for (let i = 0; i < inputTokens.length; i++) {
-    const inWord = inputTokens[i].replace(/[^A-Za-zÀ-ÿñÑüÜ]/g, '');
-    const outWord = outputTokens[i].replace(/[^A-Za-zÀ-ÿñÑüÜ]/g, '');
-    if (inWord.toLowerCase() === outWord.toLowerCase()) {
-      result.push(outputTokens[i]);
-    } else {
-      result.push(inputTokens[i]); // reject substitution
+  // Lowercased alphanumeric content for alignment
+  const norm = (t) => t.toLowerCase().replace(/[^a-zà-ÿñü]/g, '');
+  const aNorm = inputTokens.map(norm);
+  const bNorm = outputTokens.map(norm);
+  const n = aNorm.length;
+  const m = bNorm.length;
+
+  if (n === 0) return inputLine;
+
+  // LCS DP table
+  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] =
+        aNorm[i] === bNorm[j]
+          ? dp[i + 1][j + 1] + 1
+          : Math.max(dp[i + 1][j], dp[i][j + 1]);
     }
+  }
+
+  // Walk alignment: use output token where matched (accepts cap/punct
+  // changes), keep input token where unmatched (rejects substitution),
+  // skip hallucinated output tokens.
+  const result = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (aNorm[i] === bNorm[j]) {
+      result.push(outputTokens[j]);
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      result.push(inputTokens[i]);
+      i++;
+    } else {
+      j++; // skip hallucinated token
+    }
+  }
+  while (i < n) {
+    result.push(inputTokens[i]);
+    i++;
   }
   return result.join(' ');
 }

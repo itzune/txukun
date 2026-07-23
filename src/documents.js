@@ -82,7 +82,7 @@ export function deleteDoc(id) {
 export function ensureDoc() {
   let docs = listDocs();
   if (docs.length === 0) {
-    return createDoc('', '');
+    return createDoc('', WELCOME_CONTENT);
   }
   let activeId = getActiveId();
   let doc = docs.find((d) => d.id === activeId);
@@ -100,3 +100,22 @@ export function titleFromH1(content) {
   const clean = match[1].replace(/[*_`#]/g, '').trim();
   return clean.slice(0, 50);
 }
+
+/**
+ * Default content for first-time visitors — a welcome message with
+ * intentional errors across all three correction layers (cap-punct,
+ * spelling, grammar) so the user can see how txukun works by clicking
+ * "Aztertu".
+ */
+const WELCOME_CONTENT = `# Kaixo
+
+hau "txukun" da, zure euskarazko idazkiak berrikusteko tresna
+
+nola dabilen jakin nahi
+
+oso eraza da, soilik zuk nahi duzun testua idatzi hemen eta ondoren "Aztertu" botoia sakatu.
+
+ah ahaztu aurretik hau probazko bertsioa dira, esperimentu bat besterik ez da
+
+mila esker
+`;

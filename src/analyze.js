@@ -184,6 +184,15 @@ function stripMarkdown(md) {
       }
     }
 
+    // ── ASCII double quotes — strip (GECToR's SentencePiece tokenizer
+    //    splits them into standalone tokens, which breaks the LCS diff).
+    //    Positions are NOT added to the map, so offsets skip over quotes
+    //    and land on the correct characters in the original markdown.
+    if (md[i] === '"') {
+      i++;
+      continue;
+    }
+
     // ── Regular character ──
     // Record heading range at end of heading line (before the newline).
     if (md[i] === '\n' && inHeading) {
