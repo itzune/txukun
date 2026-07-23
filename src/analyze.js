@@ -266,7 +266,14 @@ export async function analyzeText(mdText) {
   // Web (WASM) cannot execute multiple sessions concurrently.
   const grammarErrors = await detectGrammarErrors(plainText);
   const spellingErrors = await detectSpellingErrors(plainText);
-  const capPunctErrors = await detectCapPunctErrors(plainText, headingRanges);
+  let capPunctErrors = await detectCapPunctErrors(plainText, headingRanges);
+
+  // Merge overlapping spelling + cap-punct errors: when both touch the
+  // same word and cap-punct is a pure capitalization change (e.g.
+  // sentence-initial), apply the capitalization to the spelling suggestion
+  // and drop the redundant cap-punct hint.
+  //   spelling: laister→laster, cap-punct: laister→Laister  →  laister→Laster
+  capPunctErrors = mergeSpellingCapPunct(spellingErrors, capPunctErrors);
 
   // Build context snippets (in plain text, paragraph-bounded) BEFORE
   // mapping offsets to markdown. This keeps context clean (no markdown
@@ -537,6 +544,54 @@ function isCasePunctOnly(a, b) {
   if (a === b) return false;
   const strip = (s) => s.replace(/[^\p{L}]/gu, '').toLowerCase();
   return strip(a) === strip(b) && strip(a).length > 0;
+}
+
+// ── Spelling + cap-punct merge ──────────────────────────────────────
+//
+// When a spelling error and a cap-punct case change overlap at the same
+// position, merge them: apply the capitalization pattern from the
+// cap-punct hint to the spelling suggestion, then drop the cap-punct
+// hint. This way the user sees a single card with the final word.
+//   spelling: laister→laster, cap-punct: laister→Laister  →  laister→Laster
+
+function mergeSpellingCapPunct(spellingErrors, capPunctErrors) {
+  const removed = new Set();
+  for (const sp of spellingErrors) {
+    for (let i = 0; i < capPunctErrors.length; i++) {
+      if (removed.has(i)) continue;
+      const cp = capPunctErrors[i];
+      // Must overlap in position
+      if (sp.from >= cp.to || cp.from >= sp.to) continue;
+      // Only merge pure case changes (no punctuation difference)
+      if (cp.original.toLowerCase() !== cp.suggestion.toLowerCase()) continue;
+      const merged = applyCasePattern(cp.original, cp.suggestion, sp.suggestion);
+      if (merged && merged !== sp.suggestion) {
+        sp.suggestion = merged;
+        removed.add(i);
+      }
+    }
+  }
+  return capPunctErrors.filter((_, i) => !removed.has(i));
+}
+
+/**
+ * Apply the case pattern from (original→corrected) to target.
+ * Currently handles first-letter capitalization (sentence-initial,
+ * proper nouns) — the only case change Basque cap-punct produces.
+ * @returns {string|null} target with case applied, or null if not applicable
+ */
+function applyCasePattern(original, corrected, target) {
+  if (original.toLowerCase() !== corrected.toLowerCase()) return null;
+  if (
+    corrected.length > 0 &&
+    original.length > 0 &&
+    corrected[0] === corrected[0].toUpperCase() &&
+    original[0] === original[0].toLowerCase() &&
+    corrected[0].toLowerCase() === original[0].toLowerCase()
+  ) {
+    return target[0].toUpperCase() + target.slice(1);
+  }
+  return null;
 }
 
 /**
