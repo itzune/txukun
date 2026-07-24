@@ -147,6 +147,29 @@ Txukun is designed to **degrade gracefully** — if any component fails, the pip
 
 The net effect: **the worst case is that text comes out with only cap-punct correction and dictionary-frequency spell fixes** — never corrupted, never empty. GECToR can be disabled via `?grammar=0` URL parameter.
 
+## 🎯 Confidence filtering
+
+Each model produces a confidence score for every suggestion. Low-confidence corrections are automatically suppressed to reduce **over-correction** (wrong changes) and **false positives** (inventing errors in clean text).
+
+| Model | Confidence source | Threshold |
+|---|---|---|
+| GECToR (grammar) | P(INCORRECT) from detection head (0.0–1.0) | **0.05** |
+| BERTeus (spelling) | Cosine similarity, normalized to 0–1 | **0.50** |
+| MarianMT (cap-punct) | LCS alignment rate (1.0 = no word substitution) | **1.00** |
+
+These thresholds were calibrated on a 220-case evaluation dataset (see [`txukun-cli/tests/gec-benchmark/`](https://github.com/itzune/txukun-cli/tree/main/tests/gec-benchmark)) via grid search. The MarianMT threshold of 1.00 effectively means: only accept corrections where the model changed case/punctuation but never substituted a word — this filters hallucinations like `Gaur`→`Euskarri` automatically.
+
+**Result**: 22.7% → 38.6% accuracy (+15.9% absolute), cutting over-corrections from 139 → 66 and false positives from 12 → 1.
+
+> ⚠️ **If models are updated or retrained**, these thresholds should be reviewed. Re-run the evaluation:
+> ```bash
+> # In txukun-cli:
+> uv run python tests/gec-benchmark/run_eval.py --output /tmp/eval_results.json
+> uv run python tests/gec-benchmark/confidence_per_model.py
+> ```
+
+Config is in `src/analyze.js` (`CONFIDENCE_THRESHOLDS` constant).
+
 ## 🚀 Development
 
 ```bash
