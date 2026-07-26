@@ -79,8 +79,8 @@ export async function initGector() {
     // this, the model re-downloads on every session.
     const [tok, voc, modelBuf] = await Promise.all([
       AutoTokenizer.from_pretrained(HF_REPO),
-      cachedFetch(`${HF_BASE}/gector_vocab.json`, 'gector-v3e3').then(r => r.json()),
-      cachedFetch(`${HF_BASE}/onnx/model_q4.onnx`, 'gector-v3e3').then(r => r.arrayBuffer()),
+      cachedFetch(`${HF_BASE}/gector_vocab.json`, 'gector-unified-v3').then(r => r.json()),
+      cachedFetch(`${HF_BASE}/onnx/model_q4.onnx`, 'gector-unified-v3').then(r => r.arrayBuffer()),
     ]);
 
     tokenizer = tok;
