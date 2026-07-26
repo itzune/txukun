@@ -369,6 +369,17 @@ export function spell(word) {
 }
 
 /**
+ * Check if a word is correctly spelled (async).
+ * Used by the proper-noun guard in analyze.js to detect words that
+ * are valid when capitalized (e.g. 'Araba' is valid but 'araba' is not).
+ * Falls back to false if worker is not ready.
+ */
+export async function checkWord(word) {
+  if (!ready) return false;
+  return await _spell(word);
+}
+
+/**
  * Simple suggestions via Hunspell.
  */
 export async function suggest(word) {
