@@ -19,6 +19,15 @@
 // Per-model minimum confidence for a correction to be shown.
 // Errors below the threshold are silently suppressed.
 //
+// These thresholds were calibrated via grid search on the 220-case
+// benchmark (txukun-cli: tests/gec-benchmark/confidence_per_model.py).
+//
+// cappunct was lowered from 1.00 to 0.80: the previous value required a
+// 100% LCS match rate (perfect alignment), which dropped ALL cap-punct
+// corrections for any text where MarianMT changed even one token beyond
+// pure case/punct. With per-segment confidence (segmentRates), 0.80
+// filters out hallucinated segments while keeping good corrections.
+//
 // These values were tuned on the 220-case evaluation dataset
 // (txukun-cli: tests/gec-benchmark/eval_dataset.json) via grid search
 // (txukun-cli: tests/gec-benchmark/confidence_per_model.py).
@@ -39,7 +48,7 @@
 const CONFIDENCE_THRESHOLDS = {
   grammar: 0.05,
   spelling: 0.50,
-  cappunct: 1.00,
+  cappunct: 0.80,
 };
 
 /**
@@ -287,7 +296,7 @@ function buildContext(plainText, from) {
 }
 
 import { correctCapPunct, isModelReady, isSpellReady } from './models.js';
-import { checkSpelling, getBestCorrection } from './spell.js';
+import { checkSpelling, getBestCorrection, checkWord } from './spell.js';
 import { correctGrammar, detectGrammar, isGectorReady, initGector } from './gector.js';
 
 let errCounter = 0;
@@ -418,11 +427,20 @@ async function detectSpellingErrors(text) {
 
     for (const err of spellErrors) {
       if (!err.suggestions || err.suggestions.length === 0) continue;
+      // Proper-noun guard: if the capitalized form of this word is a
+      // valid Hunspell word, it's likely a proper noun written in
+      // lowercase (e.g. 'araba', 'nafarroa'). Skip it — the cap-punct
+      // model should handle capitalization, and the spelling model
+      // would only corrupt it (e.g. 'araba'→'graba').
+      const original = text.slice(err.start, err.end);
+      const cap = original[0].toUpperCase() + original.slice(1);
+      if (original[0] === original[0].toLowerCase() && await checkWord(cap)) {
+        continue;
+      }
       // Use the shared two-tier re-ranking (Tier 1 freq + Tier 2 BERTeus)
       // instead of blindly taking Hunspell's suggestions[0].
       const best = await getBestCorrection(text, err);
       if (!best) continue;
-      const original = text.slice(err.start, err.end);
       const suggestion = best.word;
       if (suggestion === original) continue;
       // BERTeus cosine similarity as confidence (normalize to 0–1)
@@ -459,7 +477,7 @@ async function detectCapPunctErrors(text, headingRanges = []) {
   const errors = [];
   try {
     if (!isModelReady()) return errors;
-    const { corrected, matchRate } = await correctCapPunct(text);
+    const { corrected, matchRate, segmentRates } = await correctCapPunct(text);
     if (!corrected || corrected === text) return errors;
 
     const changes = diffWords(text, corrected);
@@ -474,6 +492,17 @@ async function detectCapPunctErrors(text, headingRanges = []) {
         ch.fromText.toLowerCase() !== ch.toText.toLowerCase()
       )
         continue;
+      // Assign per-segment match rate as confidence instead of the
+      // global average. This way, a hallucinated segment (low match
+      // rate) doesn't drag down confidence for corrections in other
+      // segments that matched well.
+      let segRate = matchRate; // fallback to global average
+      for (const sr of segmentRates) {
+        if (ch.fromOffset >= sr.start && ch.fromOffset < sr.end) {
+          segRate = sr.rate;
+          break;
+        }
+      }
       errors.push({
         id: nextId(),
         from: ch.fromOffset,
@@ -483,7 +512,7 @@ async function detectCapPunctErrors(text, headingRanges = []) {
         category: 'cappunct',
         title: capPunctTitle(ch.fromText, ch.toText),
         status: 'pending',
-        confidence: matchRate,
+        confidence: segRate,
       });
     }
   } catch (err) {

@@ -231,21 +231,28 @@ function splitIntoSegments(text) {
  * Run MarianMT cap-punct correction on the full text.
  * Splits into sentence-length segments first (the model was trained on
  * individual sentences, not paragraphs).
- * Returns the corrected text with only case/punctuation changes applied.
+ * Returns the corrected text with only case/punctuation changes applied,
+ * plus per-segment match rates so callers can assign per-correction
+ * confidence instead of a single global average.
+ *
  * @param {string} text
- * @returns {Promise<string>}
+ * @returns {Promise<{corrected: string, matchRate: number, segmentRates: Array<{start: number, end: number, rate: number}>}>}
  */
 export async function correctCapPunct(text) {
-  if (!modelLoaded || !correctorPipeline) return { corrected: text, matchRate: 1.0 };
+  if (!modelLoaded || !correctorPipeline) return { corrected: text, matchRate: 1.0, segmentRates: [] };
 
   const segments = splitIntoSegments(text);
   const results = [];
   const matchRates = [];
+  const segmentRates = [];
+  let offset = 0;
   for (const seg of segments) {
     if (!seg.text) {
       results.push({ text: '', sep: seg.sep });
+      offset += seg.sep.length;
       continue;
     }
+    const segStart = offset;
     const out = await correctorPipeline(seg.text);
     let corrected = out[0]?.translation_text || seg.text;
     corrected = corrected
@@ -254,10 +261,12 @@ export async function correctCapPunct(text) {
     const { text: constrained, matchRate } = constrainCapPunct(seg.text, corrected);
     results.push({ text: constrained || seg.text, sep: seg.sep });
     matchRates.push(matchRate);
+    segmentRates.push({ start: segStart, end: segStart + seg.text.length, rate: matchRate });
+    offset += seg.text.length + seg.sep.length;
   }
   const corrected = results.map((r) => r.text + r.sep).join('').trimEnd();
   const avgMatchRate = matchRates.length > 0
     ? matchRates.reduce((a, b) => a + b, 0) / matchRates.length
     : 1.0;
-  return { corrected, matchRate: avgMatchRate };
+  return { corrected, matchRate: avgMatchRate, segmentRates };
 }
