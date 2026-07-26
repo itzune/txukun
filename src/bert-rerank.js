@@ -25,6 +25,7 @@
  */
 
 import { AutoModel, AutoTokenizer, env } from '@huggingface/transformers';
+import { cachedFetch } from './cache.js';
 
 // ── State ───────────────────────────────────────────
 
@@ -181,7 +182,13 @@ async function loadEmbeddings(dir, useLocal) {
   const embPath = useLocal
     ? `${dir}/word_embeddings_f16.bin`
     : `${HF_BASE}/word_embeddings_f16.bin`;
-  const response = await fetch(embPath);
+  // In production, use cachedFetch to persist the 74MB embedding matrix
+  // across sessions (HF serves with cache-control: no-store).
+  // In local/test mode, plain fetch (localhost is fast, and caching
+  // would serve stale models during development).
+  const response = useLocal
+    ? await fetch(embPath)
+    : await cachedFetch(embPath, 'berteus-int4');
   if (!response.ok) {
     throw new Error(`Failed to fetch embeddings: ${response.status}`);
   }

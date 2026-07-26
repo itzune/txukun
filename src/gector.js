@@ -23,6 +23,7 @@
 
 import { InferenceSession, Tensor } from 'onnxruntime-web';
 import { AutoTokenizer, env } from '@huggingface/transformers';
+import { cachedFetch } from './cache.js';
 
 // ── State ───────────────────────────────────────────
 
@@ -73,10 +74,13 @@ export async function initGector() {
     // Load tokenizer, vocab, and ONNX model from HuggingFace Hub.
     // No env.allowLocalModels needed — Transformers.js defaults to
     // allowRemoteModels=true in browser, same as MarianMT (cap-punct).
+    // GECToR ONNX model (85MB) and vocab are fetched via cachedFetch
+    // because HuggingFace serves with cache-control: no-store. Without
+    // this, the model re-downloads on every session.
     const [tok, voc, modelBuf] = await Promise.all([
       AutoTokenizer.from_pretrained(HF_REPO),
-      fetch(`${HF_BASE}/gector_vocab.json`).then(r => r.json()),
-      fetch(`${HF_BASE}/onnx/model_q4.onnx`).then(r => r.arrayBuffer()),
+      cachedFetch(`${HF_BASE}/gector_vocab.json`, 'gector-v3e3').then(r => r.json()),
+      cachedFetch(`${HF_BASE}/onnx/model_q4.onnx`, 'gector-v3e3').then(r => r.arrayBuffer()),
     ]);
 
     tokenizer = tok;
