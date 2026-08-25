@@ -61,12 +61,12 @@ console.log('╚═════════════════════�
 
 console.log('─ Data integrity ─');
 
-test('CALQUE_WORDS has 2 entries', () => {
-  eq(Object.keys(CALQUE_WORDS).length, 2);
+test('CALQUE_WORDS has 3 entries (2 §1 + 1 §2 syntactic)', () => {
+  eq(Object.keys(CALQUE_WORDS).length, 3);
 });
 
-test('CALQUE_PHRASES has 2 entries', () => {
-  eq(CALQUE_PHRASES.length, 2);
+test('CALQUE_PHRASES has 4 entries (2 §1 + 2 §2 syntactic)', () => {
+  eq(CALQUE_PHRASES.length, 4);
 });
 
 test('No no-ops in CALQUE_WORDS', () => {
@@ -245,6 +245,60 @@ test('merezi not re-flagged after correction', () => {
 test('noranzko bakarreko not re-flagged after correction', () => {
   const corrected = rule('zentzu bakarreko errepidea');
   eq(corrected, 'noranzko bakarreko errepidea');
+  eq(rule(corrected), corrected);
+});
+
+// ── §2 Syntactic calques (Kalko morfosintaktikoak) ──
+
+console.log('\n─ §2 syntactic calques ─');
+
+test('gogoekin → gogoarekin (§2 word calque)', () => {
+  eq(rule('Hori egiteko gogoekin nago'), 'Hori egiteko gogoarekin nago');
+});
+
+test('gogoekin in sentence', () => {
+  eq(rule('Lan egiteko gogoekin dator.'), 'Lan egiteko gogoarekin dator.');
+});
+
+test('GOGOEKIN → GOGOAREKIN (UPPER case)', () => {
+  eq(rule('GOGOEKIN nago'), 'GOGOAREKIN nago');
+});
+
+test('Gogoekin → Gogoarekin (Title case, sentence start)', () => {
+  eq(rule('Gogoekin nago lanean'), 'Gogoarekin nago lanean');
+});
+
+test('gogoarekin not re-flagged (already correct)', () => {
+  eq(rule('gogoarekin nago lanean'), 'gogoarekin nago lanean');
+});
+
+test('hobe esanda → hobeto esanda (§2 phrase calque)', () => {
+  eq(rule('hobe esanda, ez da horrela'), 'hobeto esanda, ez da horrela');
+});
+
+test('hobe esan → hobeto esan (§2 phrase calque, no suffix)', () => {
+  eq(rule('hobe esan behar dut'), 'hobeto esan behar dut');
+});
+
+test('Hobe esanda → Hobeto esanda (Title case, sentence start)', () => {
+  eq(rule('Hobe esanda, ez da horrela'), 'Hobeto esanda, ez da horrela');
+});
+
+test('HOBE ESANDA → HOBETO ESANDA (UPPER case)', () => {
+  eq(rule('HOBE ESANDA, ez da horrela'), 'HOBETO ESANDA, ez da horrela');
+});
+
+test('hobe alone NOT flagged (valid adjective = better)', () => {
+  eq(rule('hobe da horrela'), 'hobe da horrela');
+});
+
+test('hobeto alone NOT flagged (already correct adverb)', () => {
+  eq(rule('hobeto esanda, ez da horrela'), 'hobeto esanda, ez da horrela');
+});
+
+test('hobeto not re-flagged after correction', () => {
+  const corrected = rule('hobe esanda, ez da horrela');
+  eq(corrected, 'hobeto esanda, ez da horrela');
   eq(rule(corrected), corrected);
 });
 

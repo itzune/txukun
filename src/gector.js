@@ -55,7 +55,7 @@ const HF_REPO = 'itzune/gector-eus-onnx';
 const HF_BASE = `https://huggingface.co/${HF_REPO}/resolve/main`;
 
 // Local fallback paths (used only for local testing)
-const BASE = import.meta.env.BASE_URL || '/';
+const BASE = import.meta.env?.BASE_URL || '/';
 const MODEL_DIR = `${BASE}models/gector`;
 
 // ── Lazy loading ────────────────────────────────────

@@ -31,8 +31,8 @@ const CACHE_NAME = 'txukun-cache';
  * @returns {Promise<Response>} A Response object (call .arrayBuffer() or .json())
  */
 export async function cachedFetch(url, versionTag) {
-  // Cache API not available (incognito mode, old browser) — plain fetch
-  if (!('caches' in window)) {
+  // Cache API not available (incognito mode, old browser, Node.js) — plain fetch
+  if (!('caches' in globalThis)) {
     return fetch(url);
   }
 

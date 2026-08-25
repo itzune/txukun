@@ -52,6 +52,7 @@ It's part of the [Itzune](https://itzune.eus) ecosystem of Basque language AI to
 | `src/ui-examples.js` | Basque example sentences as clickable chips |
 | `src/ui-toast.js` | Toast notification with type-specific styling |
 | `tests/cap-punct/` | Golden-case eval harness (EBE-grounded, RAW/CONSTRAINED/RULED metrics) |
+| `tests/ebe-rules/` | EBE §2 syntactic-calque eval suite (43 cases, 5 feasibility tiers A-E, --rules/--gector/--check modes) |
 | `tests/core/` | Rule engine unit tests (instant, no model needed) |
 | `docs/ebe-reference/` | EBE rule reference extracts (punctuation, calques, confusables) |
 | `vite.config.js` | Vite config with base path `/txukun/` |
@@ -161,4 +162,4 @@ Itzune projects follow Basque-themed naming:
 - MarianMT (cap-punct) output contains special tokens (`<unk>`, `</s>`, `<s>`, `<pad>`) — must be cleaned via `cleanModelOutput()` (`src/core/clean-output.js`)
 - q8 quantization is **lossless** for cap-punct (q8 = fp32 on the golden suite). The Hub has no fp16 files; `'fp16'` dtype 404s. int4 (BERTeus, GECToR) is a lossy but validated quantization.
 - The cap-punct model was trained on ASR-style lowercase input — it has a ~82% ceiling on general text. The rule engine closes the gap (lifts strict accuracy 81.8%→100%). See `tests/cap-punct/BASELINE.md`.
-- EBE calque/zalantza rules shipped (P1): zalantza-words (720 pairs), zalantza-phrases (52 pairs), calque (4 pairs), zalantza-proper (24 proper-noun pairs). See `TODO.md` and `RESEARCH.md` §7.12–§7.16
+- EBE calque/zalantza rules shipped (P1): zalantza-words (720 pairs), zalantza-phrases (52 pairs), calque (6 pairs: 4 §1 lexical + 2 §2 syntactic), zalantza-proper (24 proper-noun pairs). See `TODO.md` and `RESEARCH.md` §7.12–§7.17

@@ -51,10 +51,12 @@ All notable changes to Txukun will be documented in this file.
 - `src/core/data/zalantza-proper.js` — 21 single-word + 3 phrase proper-noun
   data (24 entries total). Directionality verified against EBE analytic index
   + EODA (Onomastika Datubasea).
-- `src/core/data/calque.js` — 2-word + 2-phrase calque data.
+- `src/core/data/calque.js` — 3-word + 4-phrase calque data (2-word + 2-phrase §1 lexical + 1-word + 2-phrase §2 syntactic).
+- **EBE §2 syntactic-calque eval suite** (`tests/ebe-rules/`) — measurement infrastructure for batch 3 (kalko morfosintatikoak). `cases.json` (43 cases, one per EBE §2 category, classified into 5 feasibility tiers A–E) + `eval.mjs` (3 modes: `--rules` default, `--gector`, `--check`). Baseline: rules-only 2/43 (4.7%), rules+GECToR 1/43 (2.3%). **Key finding**: GECToR does NOT cover EBE §2 calques (0/6 tier-C) — transfer errors ≠ the synthetic morphology perturbations GECToR was trained on (R1–R4). See `RESEARCH.md` §7.17.
+- **2 §2 syntactic calque rules** added to `calque.js`: `gogoekin→gogoarekin` (Sp 'con ganas' plural → Basque singular) and `hobe esanda→hobeto esanda` (Sp 'mejor dicho', adjective→adverb). These are the only 2 clean word/phrase substitutions in EBE §2's 44 categories; the rest need POS/morphology (tier D, 13) or are context-dependent (tier E, 17).
 - `tests/core/zalantza.test.mjs` — 50 unit tests.
 - `tests/core/zalantza-phrases.test.mjs` — 39 tests.
-- `tests/core/calque.test.mjs` — 41 tests.
+- `tests/core/calque.test.mjs` — 53 tests (41 §1 + 12 §2 syntactic).
 - `tests/core/zalantza-proper.test.mjs` — 46 tests (matchCaseProper,
   single-word, multi-word target, phrase, guards, full-stack integration).
 - `docs/ebe-reference/extract-zalantza.py` — reproducible extraction script (v6).
@@ -64,8 +66,10 @@ All notable changes to Txukun will be documented in this file.
   `calque`, and `zalantzaProper` in `allRules` (now 8 rules: sentence-boundary
   → sentence-initial-cap → vocative-comma → terminal-punct → zalantza-words →
   zalantza-phrases → calque → zalantza-proper).
-- `package.json` — `test:core` now runs 6 test files (235 tests total).
-- `TODO.md` — zalantza batches 1, 2a (all 3 phases), and 2b marked done.
+- `package.json` — `test:core` now runs 6 test files (247 tests total: 41+18+50+39+53+46). Added `test:ebe` and `test:ebe:check` scripts for the EBE §2 eval suite. `test` now includes `test:ebe:check`.
+- `TODO.md` — zalantza batches 1, 2a (all 3 phases), and 2b marked done; batch 3 (kalko morfosintaktikoak) research done with feasibility analysis.
+- `src/gector.js` — `import.meta.env.BASE_URL` → `import.meta.env?.BASE_URL` (optional chaining for Node.js compatibility — enables `--gector` eval mode).
+- `src/cache.js` — `'caches' in window` → `'caches' in globalThis` (works in both browser and Node.js).
 
 ### Notes
 - The cap-punct golden suite (22/22 strict) is unchanged — zalantza is

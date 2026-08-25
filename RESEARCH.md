@@ -2357,3 +2357,174 @@ UPPER sarrerarako.
 | `matchCaseProper` funtzioak proper noun-ak beti maiuskulatzen ditu | 46 unit test | Bai |
 | 0 erregresio cap-punct ebaluan | `eval.mjs --check` 22/33 strict | Bai |
 
+
+## 7.17 EBE §2 kalko morfosintaktikoak — eragigaitasun-analisia, eval-estrategia, eta GECToR-estaldia (batch 3 ikerketa)
+
+**Data**: 2026-02-04
+**Iturria**: EBE *Kalko desegoki nabarmen batzuk* §2 (ebe-kal.txt lerroak 97–385, PDF pp. 52–65)
+**Helburua**: Ebaluazio-azpiegitura eraikitzea (§7.11 plana) eta batch 3 (kalko morfosintatikoak) eragigaitasuna neurtzea inplementazioa baino lehen.
+
+### Testuingurua
+
+§7.11-k hiru mailatako ebaluazio-estrategia proposatu zuen:
+1. Zalantza/kalko lexikoak → unitate-testak (EGINDA: 235 test)
+2. Kalko morfosintaktikoak → `tests/ebe-rules/cases.json` 10-15 esaldi suite (ORAIN EGINDA)
+3. Elhuyar GEC benchmark → ez dago kalkeentzat (§7.11 Finding 1)
+
+§7.11 Finding 5-ek nabarmendu zuen kalko sintaktikoek POS heuristikak behar dituztela, `src/core/tokenizer.js` atzeratua eragiten. Atal honek hipotesi hori egiaztatzen du datuekin.
+
+### Finding 1 — 44 kategoria eragigaitasun-maila bost (A-E) sailkatuta
+
+EBE §2-k 44 kalko morfosintaktiko kategoria desberdin ditu hiru azpiataletan:
+- §2.1 Izen-sintagmaren esparrukoak (12 kategoria)
+- §2.2 Aditzaren esparrukoak (10 kategoria)
+- §2.3 Perpausaren esparruko edo gorakoak (21 kategoria + 1 kontrastiboa)
+
+Bost eragigaitasun-mailetan sailkatu dira:
+
+| Maila | Deskribapena | Kopurua | Eragigaitza orain? |
+|-------|-------------|---------|-------------------|
+| **A** | Hitz/esaldi trukaketa determinista, FP-arrisku baxua | 0 | Bai (baina ez dago A-maila garbirik) |
+| **B** | Eragigaitza gazetteer/ereduarekin — hitz-zerrenda finitu bat behar | 7 | Partzialki (2 inplementatuta) |
+| **C** | GECToR-estalita — morfologia-errorea, R1-R4 entrenamenduan egon liteke | 6 | Hipotesia: bai — **BUT SEE Finding 3** |
+| **D** | POS/morfologia behar — atzeratu `tokenizer.js` arte | 13 | Ez |
+| **E** | Testuinguru-menpekoa/helburu-anizkoitza — atzeratu mugagabe | 17 | Ez |
+
+**Ondorioa**: 44 kategoriatik 0 dira A-maila garbia (hitz-trukaketa determinista arriskurik gabe). 7 dira B-maila (gazetteer behar), 6 C-maila (GECToR hipotesia), 13 D-maila (morfologia), 17 E-maila (testuingurua). **Kategoria gehienak (30/44 = 68%) ez dira eragigaitzak motor deterministarekin.**
+
+### Finding 2 — Eval-estrategia eraiki eta baseline neurtuta
+
+`tests/ebe-rules/` sortu da:
+- `cases.json` — 43 kasu (EBE §2ko adibide bana kategoriako), 5 mailatan sailkatuta
+- `eval.mjs` — hiru modutako harness: `--rules` (lehenetsia), `--gector`, `--check`
+
+**Baseline emaitzak**:
+
+| Modua | Pasatuta | % | Oharra |
+|-------|---------|---|--------|
+| Rules only | 0/43 | 0.0% | Motorrak ezin ditu kalko sintaktikoak zuzendu |
+| Rules + GECToR | 1/43 | 2.3% | GECToR-ek 1 kasu soilik zuzendu zuen (s2-34) |
+| Rules + 2 B-maila arau berri | 2/43 | 4.7% | gogoekin + hobe esanda inplementatuta |
+
+Baseline-ak hipotesia berresten du: **uneko pipeline-ak (arauak + GECToR) ez du EBE §2 estaltzen.**
+
+### Finding 3 — GECToR-ek EZ ditu EBE §2 kalkoak estaltzen (hipotesia OKERRA)
+
+**Hau ikerketaren aurkikuntza nagusia da.** §7.11-k eta C-maila sailkapenak hipotetizatu zuten GECToR-en Elhuyar R1-R4 entrenamenduak kalko morfologikoak estaliko zituela (aditz-denbora, komunztadura, etab.). Datuek **faltsutu** egiten dute hipotesi hau:
+
+- **GECToR 0/6 C-maila**: 6 kasuak ($KEEP denak) aldatu gabe itzuli ziren
+- **GECToR 1/43 orotara**: s2-34 bakarrik ("ez dela → ez dena", erlatibo-perpausa)
+
+C-maila kasuak zergatik huts egiten duten:
+
+| Kasua | Sarrera | Itxaropena | GECToR irteera |
+|-------|---------|-----------|----------------|
+| s2-16 | lortuko luke | lortuko du | lortuko luke (aldatu gabe) |
+| s2-17 | Garbitu zara | Garbitu duzu | Garbitu zara (aldatu gabe) |
+| s2-18 | beharko zen | beharko litzateke | beharko zen (aldatu gabe) |
+| s2-19 | esaten dute | esaten du | esaten dute (aldatu gabe) |
+| s2-20 | jaiotzen da | jaio zen | jaiotzen da (aldatu gabe) |
+| s2-14 | Joaten gara | Joango gara | Joaten gara (aldatu gabe) |
+
+**Zergatia**: EBE §2 kalkoak **transfer-erroreak** dira (baliozko euskara formak testuinguru okerrean erabiltzea), ez morfologia-perturbazio sintetikoak. GECToR-en R1-R4 entrenamenduak forma zuzenak perturbatzen ditu (du→dute), baina ez ditu transfer-kalkoak (jendeak+dute, non "dute" baliozkoa da pluraleko subjektuentzat, baina "jendea" singularra da). Gainazaleko forma berdina da, baina errore-mota desberdina.
+
+Gainera, GECToR kontserbadorea da (zehaztasun handia, estaldura baxua). Esaldi kalko motzek ez dute GECToR-k behar duen testuingurua. s2-34 (pasatu zen kasu bakarra) esaldi luzeagoa da erlatibo-perpausaren testuinguru argiarekin.
+
+**Inplikazio estrategikoa**: Ezin da GECToR-en gainean jarri konfiantza EBE §2 estaltzeko. Aukerak:
+1. Kalko-eredi espezifikoa entrenatzea (Sp-eu paralelo kalko-datuak) — ML lana behar da
+2. D-mailarako POS/morfologia arauak eraikitzea — `tokenizer.js` behar da
+3. B-mailarako gazetteer-arauak — partzialki eragigaitza (2/7 orain)
+
+### Finding 4 — B-maila arauak partzialki eragigaitzak (2 inplementatuta)
+
+7 B-maila kategoriatik 2 inplementatu dira (arriskurik baxuenak):
+
+| Kasua | eredua | Helburua | Arriskua | Egoera |
+|-------|--------|---------|----------|--------|
+| s2-36 | gogoekin | gogoarekin | Oso baxua | ✅ Inplementatuta |
+| s2-37 | hobe esanda | hobeto esanda | Baxua | ✅ Inplementatuta |
+| s2-02 | gorri kolore | kolore gorri | Ertaina (helburu anizkoitza) | Atzeratuta |
+| s2-09 | Elkar etorri | Elkarrekin etorri | Ertaina (helburu anizkoitza) | Atzeratuta |
+| s2-21 | Nekatuta naiz | Nekatuta nago | Ertaina (egon-adjektiboen gazetteer handia) | Atzeratuta |
+| s2-23 | Lagundu baino, | Lagundu baino gehiago, | Ertaina (testuinguru kontrastiboa) | Atzeratuta |
+| s2-30 | % 5a | % 5 | Ertaina (zenbaki-morfologia) | Atzeratuta |
+
+**`gogoekin → gogoarekin`**: Kalkoa Sp "con ganas" (plurala) → euskara singularra ("gogoarekin"). FP-arriskua: "gogoekin" (plural instrumental) ia inoiz ez da baliozkoa ("[hainbat] gogoekin" ez da idiomatikoa). Inplementatuta `CALQUE_WORDS`-en.
+
+**`hobe esanda → hobeto esanda`**: Adjektibo "hobe" non adberbio "hobeto" behar den. Kalkoa Sp "mejor dicho". "hobe" bakarrik baliozkoa da ("hobe da"), baina "hobe esan*" esaldiak beti dira okerrak. Inplementatuta `CALQUE_PHRASES`-en.
+
+Gainontzeko 5 B-maila kasuak atzeratuta daude: helburu anizkoitza, gazetteer handia, edo testuinguru-menpekotasuna dutelako.
+
+### Finding 5 — Euskal morfologia-analizatzailearen paisaia (etorkizuneko ikerketa)
+
+D-maila kasuek (13 kategoria) POS/morfologia analisia behar dute. Euskal morfologia-analizatzaile baten egoera aztertu da:
+
+- **IXA Morfeus** (Alegria et al., 1996): Euskal morfologiaren FST analizatzaile klasikoa. Foma (open-source FST toolkit) port bat existatzen da.
+- **Lizentzia/erabilgarritasuna**: Argi ez dagoena. IXA taldearen GitHub biltegietan aurkitzen al da? Bilaketak ez zuen emaitza argirik eman. PDF artikuluak erreferentziatzen du baina ez du deskarga-estekarik ematen.
+- **Foma bera**: Open-source (GPL/Apache), C liburutegia + Python lotura. Browser-era konpilagarria WASM-ra (teorikoki).
+
+**Ondorioa**: D-maila kasuentzat, FST morfologia-analizatzaile bat etorkizuneko bidea da, baina ez dago prest erabiltzeko orain. Denbora ertaineko bide ez hain astuna: ** edit-distantzia fuzzyMatching** + **atzizki-zerrenda** (adib: "-ik" partitibo atzizkiaren zero-shot detekzioa ez da FST osoa behar).
+
+### Finding 6 — Eval-estrategiaren emaitzak taula
+
+`tests/ebe-rules/cases.json` 43 kasu, `eval.mjs` hiru modutan:
+
+```
+EBE §2 syntactic-calque eval — RULES ONLY
+Overall: 2/43 (4.7%)
+
+By tier:
+  B: 2/7 (28.6%)  [2 rules implemented: gogoekin, hobe esanda]
+  C: 0/6 (0.0%)   [GECToR expected — DOESN'T cover (Finding 3)]
+  D: 0/13 (0.0%)  [needs POS/morphology]
+  E: 0/17 (0.0%)  [context-dependent]
+
+By subsection:
+  §2.1 Izen-sintagma: 0/12 (0.0%)
+  §2.2 Aditza:       0/10 (0.0%)
+  §2.3 Perpausa:      2/21 (9.5%)
+```
+
+GECToR moduarekin:
+```
+EBE §2 syntactic-calque eval — RULES + GECToR
+Overall: 1/43 (2.3%)
+  (s2-34 bakarrik: "ez dela → ez dena" erlatibo-perpausa)
+  C-maila: 0/6 — hipotesia okerra (Finding 3)
+```
+
+### Inplikazio estrategikoak batch 3-rako
+
+1. **Batch 3 ez da egingarria motor deterministarekin bakarrik**. 44 kategoriatik 2 soilik zuzendu daitezke orain (4.7%). Gainontzeko 42k POS/morfologia (D), testuingurua (E), edo GECToR-estaldia behar dute (C, baina GECToR-ek ez du estaltzen).
+
+2. **GECToR ez da konponbidea EBE §2-rako**. Transfer-erroreak ≠ perturbazio sintetikoak. GECToR berriro entrenatzea kalko-datu paraleloetan ML-lana da, erabiltzaileak ezin du egin orain.
+
+3. **Bide pragmatikoa**:
+   - B-maila gazetteer-arau gehiago (5 geratzen dira, baina arrisku ertainak)
+   - Atzizki-eredu arina D-mailarentzat (ez FST osoa, baizik "-ik" partitiboa, "-z" instrumentalaren detekzioa)
+   - GECToR-en konfiantza-atalasa jaistea (estaldura handiagoa, zehaztasun txikiagoa) — esperimentala
+
+4. **EBE §2 ez da lehentasun handia produktuarentzat**. Kalko sintaktikoak idazle aurreratuentzako erroreak dira. Erabiltzaile arruntarentzat, zalantza/kalko lexikoak (batch 1-2a-2b, 720+ parea) balio handiagoa dute. EBE §2 atzeratu daiteke P3/P4 mailara.
+
+### Fitxategiak
+
+| Fitxategia | Helburua |
+|-----------|---------|
+| `tests/ebe-rules/cases.json` | 43 EBE §2 kasu, 5 mailatan |
+| `tests/ebe-rules/eval.mjs` | Eval harness (--rules / --gector / --check) |
+| `src/core/data/calque.js` | +2 §2 sarrera (gogoekin, hobe esanda) |
+| `src/gector.js` | `import.meta.env` → `?.` aukeraketa-katea (Node bateragarritasuna) |
+| `src/cache.js` | `window` → `globalThis` (Node bateragarritasuna) |
+| `tests/core/calque.test.mjs` | +12 test §2 kalkoentzat (53 guztira) |
+
+### Egiaztapena
+
+| Baieztapena | Iturria | Egiaztatuta |
+|------------|--------|-------------|
+| 44 EBE §2 kategoria daude | `ebe-kal.txt` lerroak 97-385 | Bai |
+| Rules-only baseline 0/43 (orain 2/43 arau berriekin) | `eval.mjs --rules` | Bai |
+| GECToR 0/6 C-maila | `eval.mjs --gector --tier C` | Bai |
+| GECToR-ek transfer-kalkoak ez ditu estaltzen | R1-R4 entrenamendua perturbazio sintetikoa da, ez transfer | Bai |
+| 2 B-maila arau berriek 2 kasu zuzentzen dituzte | `eval.mjs --tier B --verbose` | Bai |
+| 0 erregresio cap-punct ebaluan | `eval.mjs --check` 22/33 strict | Bai |
+| 247 unit test pasatuta | `npm run test:core` | Bai |
