@@ -45,7 +45,7 @@ konposatuak, lerro-anitzeko sarrerak) ezin da testu soiletik berreskuratu.
 | `zalantza-new-singles.tsv` | Hitz bakuneko bikote berriak (batch 1-eko hutsunea) | 93 |
 | `zalantza-type-c.tsv` | Hitz bakuna → esapidea (multi-word helburua) | 19 |
 | `zalantza-phrases.tsv` | Multi-token RED esapideak (A+B+D motak) | 33 |
-| `zalantza-proper.tsv` | Izen bereziak (→ F5 gazetteer) | 35 |
+| `zalantza-proper.tsv` | Izen bereziak (exonoimoak) → **EGINDA** `zalantza-proper.js`-n | 35 (27 bakar, 24 seguru) |
 | `zalantza-ambiguous.tsv` | Anbiguoak (→ batch 3+, testuingurua behar) | 6 |
 
 Batch 1-eko 628 bikoteak `src/core/data/zalantza.js`-n daude.

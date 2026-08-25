@@ -2222,3 +2222,138 @@ normatibo baterako, markatzea egokia da — erabiltzaileak baztertu dezake.
 | Helburuak identikoak bi EBE ataletan | node script konparaketa | Bai |
 | 0 zalantza↔kalke kate-arrisku | `validate_calques.mjs` (26 check) | Bai |
 
+## 7.16 F5 ikerketa eta zalantza izendunak — testuinguru-menpekotasuna eta exonoimoak (batch 2a Phase 3)
+
+### Aurkikuntza nagusia: F5 ezin da gazetteer hutsez ebatzi
+
+EBE Maiuskulak atala (id=1023) sakon aztertu ondoren, **F5 (maiuskula
+semantikoak) testuinguru-menpekoa dela baieztatu da**, eta ezin da
+gazetteer (zerrenda determinista) hutsez ebatzi. Bi adibide argi:
+
+1. **Erakundeak (§1.3)**: "Donostiako **Udala**" (erakunde zehatza, maiuskula)
+   vs "Gipuzkoako **udaletan**" (orokorra, minuskula) — hitz bera,
+   testuinguruaren arabera maiuskula edo minuskula
+
+2. **Izar gorputzak (§1.6)**: "**Eguzkia**" (izarrondo-izena) vs "**eguzkia**"
+   (izen arrunta, eguzki-argia) — EBE-k bereizketa hau ez du esplizituki
+   zehazten, baina erabilera orokorrean bi adierak badaude
+
+Gazetteer hutsak **gain-maiuskulatuko luke** eta c050 kasua apurtuko luke
+("gaur eguzkia atera da" → minuskula "eguzkia"). Beraz, c091 (erakunde-maius),
+c095 (izar gorputzak), c096 (ereduak gain-maiuskulatu) benetan
+"zail-ezagunak" dira — testuinguru/POS analisia behar dute, ez arau
+determinista.
+
+### Birbideraketa: zalantza izendunak (exonoimoak)
+
+F5 saihestuta, EBE zalantza-ataleko **izendunak** (proper nouns) aztertu
+ziren. `zalantza-proper.tsv`-ko 35 sarreretatik 27 bikote bakar dira.
+Hiru baztertu dira:
+
+| Sarrera | Arrazoia |
+|---|---|
+| `ozkabarte` | Erauzketa hautsia ("santo domingo de la" — "Calzada" falta).
+  Ziurrenik sarrera gaizki bideratua. Berriro erauzi arte baztertu |
+| `donejakue` | Faltsu-positibo arriskua. "Donejakue" bakarrik baliozko hitza da
+  (adjektiboa: "Donejakue bidea" ez ezik "donejakue eliza"). Helburua
+  "Donejakue bidea" bakarrik Donejakue bideari buruz hitz egitean aplikatzen da |
+| `donibane` | Faltsu-positibo arriskua. "Donibane" izen-osagai bat da, leku
+  ANITZETAN erabiltzen dena (Donibane Garazi ≠ Donibane Lohizune). Helburua
+  bakarrik Saint-Jean-de-Luz-i aplikatzen zaio |
+
+### Norabidea egiaztatzea: kolore-analisia egia da
+
+`ebe-zal.txt`-k kolorea galtzen du (testu soila). Erauzketak PDF kolore-analisia
+erabili zuen (RED=gaitzespena, BOLD=estandarra). Bi sarrera zalantzan jarri
+ziren baina egiaztatu ziren:
+
+- **`kalagorria→Calahorra`**: EBE aurkibide analitikoak `*Kalagorria/Calahorra`
+  erakusten du (`*` = gaitzetsia). EODA-k (Euskaltzaindiaren Onomastika
+  Datubasea) "Calahorra" baieztatzen du forma ofizial bezala. Exonoimo bat da
+  (Errioxako hiria, ez du euskal forma tradizionalik, gaztelaniazkoa mantendu)
+- **`pertsia→Persia`**: ez da euskaratu gehiegi. "Persia" forma internazionala
+  da, "Pertsia" goi-euskaraketa da
+
+### matchCaseProper() — funtzio berria
+
+Proper noun-entzako kasu-mantentze funtzio berezia sortu da. `matchCase()`-ren
+(desberdintasun gakoa: proper noun-ak BETI maiuskulaz idazten dira:
+
+| Sarrera (input) | `matchCase()` (izen arrunta) | `matchCaseProper()` (izenduna) |
+|---|---|---|
+| minuskula (`ukrania`) | `ukraina` (minuskula) | `Ukraina` (Title) |
+| Title (`Ukrania`) | `Ukraina` (Title) | `Ukraina` (Title) |
+| UPPER (`UKRANIA`) | `UKRAINIA` (UPPER) | `UKRAINA` (UPPER) |
+| nahastua (`uKrania`) | `null` (saltatu) | `null` (saltatu) |
+
+Helburua datu-fitxategian aurre-maiuskulatuta dago (adibidez,
+"Erdialdeko Amerika", "Donibane Lohizune"). `matchCaseProper()` helburua
+gorde den bezala itzult du minuskula/Title sarrerarako, eta `toUpperCase()`
+UPPER sarrerarako.
+
+### Inplementazioa
+
+- **Datu-fitxategia**: `src/core/data/zalantza-proper.js` — 21 hitz bakun +
+  3 esapide (24 sarrera guztira)
+- **Araua**: `src/core/rules/zalantza-proper.js` — arau konbinatua
+  (hitza bilaketa priority 49 + esapide leiho irristakorra priority 50)
+- **LintKind**: `Confusable` (zalantzarekin partekatua)
+- **`matchCaseProper()`** esportatzen da zalantza-proper.js-tik
+
+### Egiaztapena
+
+`/tmp/validate_proper.mjs` scriptak 24 check egin zituen — denak gainditu:
+
+| Check | Emaitza |
+|---|---|
+| 21 hitz bakun + 3 esapide | ✓ |
+| 0 bikoiztu | ✓ |
+| 0 zalantza.js-rekin gainjartzea | ✓ |
+| 0 zalantza-phrases.js-rekin gainjartzea | ✓ |
+| 0 calque.js-rekin gainjartzea | ✓ |
+| 0 idempotzia-kate (helburua RED-a da) | ✓ |
+| RED guztiak minuskulaz | ✓ |
+| Helburu guztiak maiuskulaz hasi | ✓ |
+| 0 no-op (RED = helburua) | ✓ |
+| 0 zalantza RED izango liratekeen helburuak | ✓ |
+
+### Test emaitzak
+
+- 46 test berri (`tests/core/zalantza-proper.test.mjs`) — denak gainditu
+- Core testak: 41+18+50+39+41+46 = **235 guztira** — denak gainditu
+- Cap-punct eval: 22/33 strict (aldaketarik gabe, zero erregresio)
+- Vite build: OK
+
+### Aurkikuntza gehigarriak
+
+1. **`matchCaseProper` ez da `matchCase`-ren ordezkoa**: bi funtziok
+   helburu desberdinak dituzte. Izendunentzako `matchCaseProper`, izen
+   arruntentzako `matchCase`. Hirugarren kontsumitzaile batek (`calque.js`)
+   `matchCase` erabiltzen du oraindik
+
+2. **Esapide-puntuazio sentsibilitatea**: "big-bang" (marratxoa) ≠ "big bang"
+   (hutsunea) — RED desberdinak dira, helburu desberdinekin. Esapide-arauak
+   puntuazioa zehatz-mehatz konparatzen du, hitzak case-insensitive
+
+3. **`donejakue` eta `donibane` ez dira F5 kasuak**: hauek ez dira maiuskula-
+   arazoak, baizik eta testuinguru-menpeko ordezkapenak. F5 (maiuskula
+   semantikoak) guztiz desberdina da — hitz bera bi testuingurutan
+   (orokorra vs berezia). `donejakue`/`donibane` dira hitz zuzen bat
+   testuinguru batzuetan baina ez besteetan
+
+4. **c091/c095/c096 ezin dira arau deterministez ebatzi**: testuinguru/POS
+   analisia behar dute. Etorkizuneko lana (batch 3+: POS tokenizatzailea)
+
+### Egiaztapen-egoera
+
+| Baieztapena | Iturria | Egiaztatuta? |
+|---|---|---|
+| F5 testuinguru-menpekoa da, ez gazetteer | EBE Maiuskulak id=1023 (§1.3, §1.6) | Bai |
+| 24 izendun-bikote seguruak dira | `validate_proper.mjs` (24 check) | Bai |
+| `kalagorria→Calahorra` norabidea zuzena da | EBE aurkibide analitikoa + EODA | Bai |
+| `pertsia→Persia` norabidea zuzena da | EBE zalantza testua + linguistika | Bai |
+| `ozkabarte` erauzketa hautsita dago | `ebe-zal.txt` lerroak 840-841 | Bai |
+| `donejakue`/`donibane` faltsu-positibo arriskua | linguistika-analisia | Bai |
+| `matchCaseProper` funtzioak proper noun-ak beti maiuskulatzen ditu | 46 unit test | Bai |
+| 0 erregresio cap-punct ebaluan | `eval.mjs --check` 22/33 strict | Bai |
+

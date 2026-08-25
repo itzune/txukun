@@ -14,8 +14,9 @@ import vocativeComma from './vocative-comma.js';
 import zalantzaWords from './zalantza-words.js';
 import zalantzaPhrases from './zalantza-phrases.js';
 import calque from './calque.js';
+import zalantzaProper from './zalantza-proper.js';
 
-export { sentenceBoundary, sentenceInitialCap, terminalPunct, vocativeComma, zalantzaWords, zalantzaPhrases, calque };
+export { sentenceBoundary, sentenceInitialCap, terminalPunct, vocativeComma, zalantzaWords, zalantzaPhrases, calque, zalantzaProper };
 
-/** All registered rules, in priority order (split→cap→comma→punct→zalantza-word→zalantza-phrase→calque). */
-export const allRules = [sentenceBoundary, sentenceInitialCap, vocativeComma, terminalPunct, zalantzaWords, zalantzaPhrases, calque];
+/** All registered rules, in priority order (split→cap→comma→punct→zalantza-word→zalantza-phrase→calque→zalantza-proper). */
+export const allRules = [sentenceBoundary, sentenceInitialCap, vocativeComma, terminalPunct, zalantzaWords, zalantzaPhrases, calque, zalantzaProper];

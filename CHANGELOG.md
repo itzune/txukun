@@ -38,19 +38,34 @@ All notable changes to Txukun will be documented in this file.
   Combined word-lookup (priority 47) + phrase sliding-window (priority 48) in
   one rule. `LintKind.Calque`. 4 other pairs already covered by zalantza rule.
   See `RESEARCH.md` §7.15.
+- **Zalantza izendunak rule** (`src/core/rules/zalantza-proper.js`) — EBE-grounded
+  proper-noun spelling correction (batch 2a Phase 3). Corrects 24 exonym /
+  proper-noun pairs: `ukrania→Ukraina`, `troya→Troia`, `kalagorria→Calahorra`,
+  `big-bang→Big Bang`, etc. Combined word-lookup (priority 49) + phrase
+  sliding-window (priority 50) in one rule. New `matchCaseProper()` function —
+  unlike `matchCase()`, always returns a capitalized target (proper nouns are
+  always capitalized). `LintKind.Confusable`. 3 entries skipped: `ozkabarte`
+  (broken extraction), `donejakue`/`donibane` (false-positive risk). F5
+  research: semantic capitalization is context-dependent, not gazetteer-able.
+  See `RESEARCH.md` §7.16.
+- `src/core/data/zalantza-proper.js` — 21 single-word + 3 phrase proper-noun
+  data (24 entries total). Directionality verified against EBE analytic index
+  + EODA (Onomastika Datubasea).
 - `src/core/data/calque.js` — 2-word + 2-phrase calque data.
 - `tests/core/zalantza.test.mjs` — 50 unit tests.
 - `tests/core/zalantza-phrases.test.mjs` — 39 tests.
 - `tests/core/calque.test.mjs` — 41 tests.
+- `tests/core/zalantza-proper.test.mjs` — 46 tests (matchCaseProper,
+  single-word, multi-word target, phrase, guards, full-stack integration).
 - `docs/ebe-reference/extract-zalantza.py` — reproducible extraction script (v6).
 
 ### Changed
-- `src/core/rules/index.js` — registered `zalantzaWords`, `zalantzaPhrases`, and
-  `calque` in `allRules` (now 7 rules: sentence-boundary → sentence-initial-cap
-  → vocative-comma → terminal-punct → zalantza-words → zalantza-phrases →
-  calque).
-- `package.json` — `test:core` now runs 5 test files (189 tests total).
-- `TODO.md` — zalantza batches 1, 2a, and 2b marked done.
+- `src/core/rules/index.js` — registered `zalantzaWords`, `zalantzaPhrases`,
+  `calque`, and `zalantzaProper` in `allRules` (now 8 rules: sentence-boundary
+  → sentence-initial-cap → vocative-comma → terminal-punct → zalantza-words →
+  zalantza-phrases → calque → zalantza-proper).
+- `package.json` — `test:core` now runs 6 test files (235 tests total).
+- `TODO.md` — zalantza batches 1, 2a (all 3 phases), and 2b marked done.
 
 ### Notes
 - The cap-punct golden suite (22/22 strict) is unchanged — zalantza is
