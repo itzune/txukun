@@ -2,7 +2,7 @@
  * Zalantza-words rule unit tests — runs WITHOUT the model (instant).
  *
  * Tests the EBE-grounded zalantza-hittak rule (src/core/rules/zalantza-words.js)
- * against the 628-pair dictionary (src/core/data/zalantza.js). Verifies:
+ * against the 739-pair dictionary (src/core/data/zalantza.js). Verifies:
  *   - word-level substitution correctness
  *   - case preservation (lower / Title / UPPER)
  *   - mixed-case skip (proper-noun guard)
@@ -57,8 +57,8 @@ console.log('╚═════════════════════�
 // ── Data integrity ──────────────────────────────────
 
 console.log('Data integrity:');
-test('dictionary has 628 pairs', () => {
-  eq(Object.keys(ZALANTZA).length, 628, 'pair count');
+test('dictionary has 739 pairs', () => {
+  eq(Object.keys(ZALANTZA).length, 739, 'pair count');
 });
 test('dictionary is frozen', () => {
   eq(Object.isFrozen(ZALANTZA), true);
@@ -68,12 +68,29 @@ test('no idempotency overlap (no RED is also a BOLD target)', () => {
   const overlap = Object.keys(ZALANTZA).filter((k) => vals.has(k));
   eq(overlap.length, 0, 'overlap');
 });
-test('known pairs present', () => {
+test('known pairs present (batch 1)', () => {
   eq(ZALANTZA['aborto'], 'abortu');
   eq(ZALANTZA['abots'], 'ahots');
   eq(ZALANTZA['amapola'], 'mitxoleta');
   eq(ZALANTZA['onda'], 'uhin');
   eq(ZALANTZA['azufre'], 'sufre');
+});
+test('batch 2a new singles present', () => {
+  eq(ZALANTZA['aitzaki'], 'aitzakia');
+  eq(ZALANTZA['amorrain'], 'amuarrain');
+  eq(ZALANTZA['batxilerato'], 'batxilergo');
+  eq(ZALANTZA['diabetis'], 'diabetes');
+  eq(ZALANTZA['eskui'], 'eskuin');
+  eq(ZALANTZA['ikurriñ'], 'ikurrin');
+  eq(ZALANTZA['marioneta'], 'txotxongilo');
+});
+test('batch 2a Type C pairs present (single RED → multi-word BOLD)', () => {
+  eq(ZALANTZA['abioneta'], 'hegazkin txiki');
+  eq(ZALANTZA['arratsaldeon'], 'arratsalde on');
+  eq(ZALANTZA['egunon'], 'egun on');
+  eq(ZALANTZA['eskerrikasko'], 'eskerrik asko');
+  eq(ZALANTZA['laburmetraia'], 'film labur');
+  eq(ZALANTZA['luzemetraia'], 'film luze');
 });
 test('compound fragments excluded from dictionary', () => {
   eq(ZALANTZA['izar'], undefined, 'izar (star) must be absent');
@@ -150,6 +167,37 @@ test('sentence-initial zalantza word (Title-case)', () => {
 test('does not touch surrounding punctuation', () => {
   eq(rule('amapola, azufre.'), 'mitxoleta, sufre.');
 });
+
+// ── Batch 2a: new singles ───────────────────────────
+
+console.log('\nBatch 2a — new singles:');
+test('aitzaki → aitzakia', () => eq(rule('aitzaki'), 'aitzakia'));
+test('amorrain → amuarrain', () => eq(rule('amorrain'), 'amuarrain'));
+test('batxilerato → batxilergo', () => eq(rule('batxilerato'), 'batxilergo'));
+test('diabetis → diabetes', () => eq(rule('diabetis'), 'diabetes'));
+test('eskui → eskuin', () => eq(rule('eskui'), 'eskuin'));
+test('ikurriñ → ikurrin (ñ preserved)', () => eq(rule('ikurriñ'), 'ikurrin'));
+test('marioneta → txotxongilo', () => eq(rule('marioneta'), 'txotxongilo'));
+test('txontxongilo → txotxongilo', () => eq(rule('txontxongilo'), 'txotxongilo'));
+
+// ── Batch 2a: Type C (single-word RED → multi-word BOLD) ──
+
+console.log('\nBatch 2a — Type C (multi-word targets):');
+test('abioneta → hegazkin txiki', () => eq(rule('abioneta'), 'hegazkin txiki'));
+test('arratsaldeon → arratsalde on', () => eq(rule('arratsaldeon'), 'arratsalde on'));
+test('egunon → egun on', () => eq(rule('egunon'), 'egun on'));
+test('eskerrikasko → eskerrik asko', () => eq(rule('eskerrikasko'), 'eskerrik asko'));
+test('laburmetraia → film labur', () => eq(rule('laburmetraia'), 'film labur'));
+test('Type C Title-case preserved (Abioneta → Hegazkin txiki)', () =>
+  eq(rule('Abioneta'), 'Hegazkin txiki'));
+test('Type C UPPER preserved (ABIONETA → HEGAZKIN TXIKI)', () =>
+  eq(rule('ABIONETA'), 'HEGAZKIN TXIKI'));
+test('Type C idempotency: multi-word target not re-touched', () => {
+  eq(rule('hegazkin txiki'), 'hegazkin txiki', 'standard form unchanged');
+  eq(rule('egun on'), 'egun on');
+});
+test('Type C in context (abioneta bat → hegazkin txiki bat)', () =>
+  eq(rule('abioneta bat ikusi dut'), 'hegazkin txiki bat ikusi dut'));
 
 // ── Full rule-stack integration ─────────────────────
 
