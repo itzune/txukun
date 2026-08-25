@@ -6,7 +6,11 @@ Instructions for AI agents working on the Txukun project.
 
 ## Project Overview
 
-Txukun is a browser-based Basque text cleaning tool that restores capitalization and punctuation to raw text (e.g., ASR output). It's part of the [Itzune](https://itzune.eus) ecosystem of Basque language AI tools.
+Txukun is a browser-based writing assistant for Basque. It checks grammar, spelling, capitalization, and punctuation — a Grammarly-for-Euskara, with everything running privately in the browser. It combines three neural models (GECToR grammar, BERTeus spelling re-ranking, MarianMT cap-punct) with a deterministic rule engine grounded in Euskaltzaindia's EBE reference.
+
+It works on any Basque text, and is also well-suited to cleaning up ASR (speech-to-text) output — but ASR is one use case among many, not the tool's whole scope.
+
+It's part of the [Itzune](https://itzune.eus) ecosystem of Basque language AI tools.
 
 - **Repo**: https://github.com/itzune/txukun
 - **Site**: https://itzune.eus/txukun/

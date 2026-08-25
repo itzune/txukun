@@ -91,15 +91,24 @@ Jatorria: `XUXEN_ISSUES.md` eta `ISSUE_LOG.md`.
 - [x] **Txukun Lite UI zuzenketa** — `src/analyze.js:detectCapPunctErrors`-en `if (!isModelReady()) return` goiztiarra kenduta. Aurretik eredu gabeZERO arau-zuzenketa agertzen zen kartetan; orain arauak (koma, maiuskula, puntuazioa) kartetan agertzen dira eredua kargatu aurretik/gabe. `src/core/diff.js` sortuta (diffWords + isCasePunctOnly — Node-testagarria). `tests/core/txukun-lite.test.mjs` (18 test)
 - [x] **Eval integrazioa** — `tests/cap-punct/eval.mjs`-en RULED metrika gehituta (RAW / CONSTRAINED / RULED). `--no-rules` flag-a
 - [x] **c071 golden kasua zuzenduta** — Ikerketak (§7.9) erakutsi zuen jatorrizko periodak-esperantza EBE-ren aurkakoa zela: alborakuntza (asyndetic coordination) esaldi bakarra da komekin (EBE puntuazioa §1 oina). Expected komak bertsiora aldatuta
-- [ ] **`src/core/rules/` EBE oinarritutako arauak** — batch 3+, iturria: `docs/ebe-reference/` eta `RESEARCH.md` §7.7 (ez egiaztatu gabeko espekulazioak):
-    - [ ] *Kalko lexiko-semantikoak* (`ebe-kal.txt`): `balore→balio`, `froga/proba` bereizketa, `*pena merezi→merezi`, `*ospatu bilera→bilera egin`
-    - [ ] *Kalko morfosintaktikoak*: `*Nekatuta naiz→Nekatuta nago`, `*Aspertu naiz, joaten gara?→Joango gara?`, pasibo okerrak (`*Poliziagatik atxilotua izan zen→Poliziak atxilotu zuen`), `ere` lokailuaren posizioa (`*Ere daude→...ere badaude`)
-    - [ ] *Zalantza-hitzak* (`ebe-zal.txt`): `abots→ahots`, `aborto→abortu`, `ahalderatu→ahalbidetu` — Hiztegiak gomendatutako formak
-    - [ ] *Maiuskulak*: izen bereziak soilik (EBE *Maiuskulak*, id=1023). EZ ingeles/gaztelania bezala: egunak (`astelehena`) eta hilabeteak (`urtarrila`) minuskulaz; nazionalitate/hizkuntza-izenlagunak minuskulaz (`euskal`); erakundeak partzialki (`Donostiako Udala` baina `udaletan`); astroak leku-izen (`Lurra`, `Eguzkia`)
-- [ ] Hunspell-eu/Xuxen hitz-zerrendatik sortutako hiztegia (`src/core/dictionary.js`) — P0.1-ko lanarekin bateragarria
-- [ ] Edit-distance fuzzy iradokizunak spell-checkerako
+- [ ] **`src/core/rules/` EBE oinarritutako arauak — HELBURU NAGUSIA (idazle orokorra)** — batch 3+, iturria: `docs/ebe-reference/` eta `RESEARCH.md` §7.7, §7.11. Arau hauek ASR artefaktuak ez dira; edozein euskaldun idazlek egiten dituen akatsak dira (gaztelania/frantsesetik eratorriak). Txukun-ek Grammarly-moduko tresna orokor gisa duen posizioa sendotzen dute:
+    - [ ] *Zalantza-hitzak* (`ebe-zal.txt`) — **batch 1 (errazena)**: hitz-mailako ordezkapen determinista (`abots→ahots`, `aborto→abortu`, `ahalderatu→ahalbidetu`). EBEak berak ematen du golden datu-multzoa ("ez erabili X, erabili Y" bikoteak). Unit-testak ebe-zal.txt-ko bikoteen kontra. ~30-50 sarrera daude
+    - [ ] *Kalko lexiko-semantikoak* (`ebe-kal.txt` §1) — **batch 2**: `balore→balio`, `*ideologia anitza→askotariko ideologia`, `*pena merezi→merezi`, `*ospatu bilera→bilera egin`. Hitz bakunekoak errazak; esaldi-mailakoak ("pena merezi") frase-detekzioa behar dute
+    - [ ] *Kalko morfosintaktikoak* (`ebe-kal.txt`) — **batch 3 (zailena)**: `*Nekatuta naiz→Nekatuta nago`, `*Aspertu naiz, joaten gara?→Joango gara?`, pasibo okerrak (`*Poliziagatik atxilotua izan zen→Poliziak atxilotu zuen`), `ere` lokailuaren posizioa (`*Ere daude→...ere badaude`). Hauek testuingurua/morfologia behar dute — baliteke POS tokenizer atzeratuagoa behar izatea
+    - [ ] *Maiuskulak semantikoak* (F5) — erakundeak (`Euskal Herriko Unibertsitatea`), astro leku-izenak (`Lurra`, `Eguzkia`). **Gazetteer-a behar du** (`src/core/dictionary.js`-en izen-zerrenda). c091, c095 konpontzen ditu; c096 (ereduak gehiegi maiuskulatzen du) des-maiuskulatze arriskutsua da — atzeratu
+- [ ] **`src/core/dictionary.js`** — EBE zalantza/kalko hitzen + izen berezien gazetteer-a. Hunspell-eu/Xuxen hitz-zerrendarekin bateragarria (P0.1). Zalantza-arauen oinarria da (batch 1)
+- [ ] **EBE arauen eval-estrategia** (ikus §7.11 ikerketa): Elhuyar GEC benchmark-ak (R1-R4 akats motak: aditz-denbora, kasu-kidetasuna, determinatzailea, lokailua) **ez ditu kalko/zalantza akatsik** — hauek morfologia sintetikoa dira, ez aukeraketa lexikala. Beraz: (1) zalantza/kalko lexikoak unit-testen bidez ebaluatu ebe-zal.txt/ebe-kal.txt bikoteen kontra (EBE bera da golden set-a); (2) kalko morfosintaktikoak esaldi-testuingurua behar dute → sortu `tests/ebe-rules/cases.json` 10-15 esaldiko suite txikia (EBEren adibideetatik erauzita)
+- [ ] Edit-distance fuzzy iradokizunak spell-checkerarako
 - [ ] **(Atzeratuta) `src/core/expr.js`** — Pattern combinator liburutegia (`seq`, `word`, `anyOf`, `optional`). **EZ egin ≥50 arau daudenera arte** — §7.8-ko erabakia. Oraingoz arau bakoitza funtzio inperatibo bat da
-- [ ] **(Atzeratuta) `src/core/tokenizer.js` POS-rekin** — Harper-ren Brill POS tagger ez da beharrezkoa EBE calque mailako arauetarako. Gehitu morfologia bat benetan eskatzen duen arau bat agertzean
+- [ ] **(Atzeratuta) `src/core/tokenizer.js` POS-rekin** — Harper-ren Brill POS tagger ez da beharrezkoa EBE zalantza/kalko lexikoetarako. **Beharrezkoa izango da kalko morfosintaktikoetarako** (batch 3: `*Nekatuta naiz` detektatzeko POS/izena behar da). Gehitu orduan
+
+### ASR modua (atzeratuta, aukerakoa) — F3 normalizazioa
+
+> **Ez da errepide-nagusia.** F3 akatsak (`e i te be→EiTB`, `ehuneko berrogeita bikoa→%42`, `hitz puntu e hatxe u→hitz.ehu.eus`) **ASR irteeran soilik** agertzen dira — inork ez ditu eskuz idazten. Hauek txukun-en nukleo-pipelinean txertatzeak tresna ASR-garbitzaile batera itzuliko luke, v2.0.0-k duen Grammarly-moduko posizio orokorrari kontra eginez.
+
+> Aukeran, etorkizunean ASR modua izan liteke (toggle bat, `?asr=1` URL parametroa, spell togglearen antzera) — erabiltzaileak ASR irteera itsasten duenean aktibatzen du. Baina ez da lehentasuna.
+
+- [ ] **(Atzeratuta) F3 ASR normalizazioa** — `constrainCapPunct`-en politika: baimendu legetimak diren ASR normalizazioak (akronimo hedapena `EiTB`, ehuneko sinboloa `%42`, URL berreraiketa). c081, c082, c083 konpontzen ditu. Helmuga: all-case 81.8%→90.9%. **Arriskua**: ASR-niche bihurtzen du; orokorreko idazlearentzat ez du baliorik. ASR toggle baten atzean gorde
 
 ---
 

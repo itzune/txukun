@@ -1239,3 +1239,132 @@ matcher. Deferred — the two-word form is far more common in practice.
 - Mean Levenshtein: 0.287 → **0.224**
 - Strict: held at 22/22 (100%) — both fixed cases are `strict:false`
 - **Zero regressions** (c080 strict:true preserved by the word-count heuristic)
+
+---
+
+## 7.11 EBE arauak — eval-estrategia eta ASR-niche arriskua
+
+Research conducted before reframing the P1 roadmap away from F3 (ASR normalization)
+toward EBE calque/zalantza rules. Two questions: (1) do the existing eval harnesses
+cover calque/zalantza errors? (2) is F3 (ASR normalization) the right next step?
+
+### Finding 1: F3 cases are ASR-niche — a general-purpose writer never produces them
+
+The three F3 failures, examined concretely:
+
+| Case | Input | Expected | Who writes this? |
+|---|---|---|---|
+| c081 | `faktoria e i te beko irratian...` | `Faktoria EiTBko irratian...` | Only ASR spells out acronyms letter-by-letter |
+| c082 | `...ehuneko berrogeita bikoa` | `...%42koa` | Only ASR verbalizes symbols |
+| c083 | `...hitz puntu e hatxe u puntu eus...` | `...hitz.ehu.eus...` | Only ASR spells out URLs/punctuation |
+
+A person typing normally writes `EiTB`, `%42`, `hitz.ehu.eus` directly. F3 rules
+would **never fire** on general text — they're only useful as an ASR post-processor.
+Building them into the core pipeline pulls txukun back toward "ASR cleaner" just as
+v2.0.0 positioned it as a general-purpose writing tool (3-model Grammarly-style
+architecture).
+
+**Decision: demote F3 to an optional "ASR mode" (toggle, like the existing spell
+toggle). Not core roadmap.** Could live behind `?asr=1` URL param. ASR remains a
+valid use case — just not the headline pitch.
+
+### Finding 2: EBE calques/zalantzak are general-purpose writer errors
+
+The EBE **kalkoak** and **zalantza-hittak** are exactly the errors Basque *speakers*
+make when writing — Spanish/French-influenced calques and doubtful word choices.
+Verified from `docs/ebe-reference/ebe-kal.txt` and `ebe-zal.txt`:
+
+- *Lexical calques*: `balore→balio` (Spanish "valores"), `*ideologia anitza→
+  askotariko ideologia` ("ideología variada"), `*Egun berdinean→Egun berean`
+  ("el mismo día")
+- *Syntactic calques*: `*Euria dago→Euria ari du` ("está lloviendo"), `*Nekatuta
+  naiz→Nekatuta nago` ("estoy cansado"), `*Poliziagatik atxilotua izan zen→
+  Poliziak atxilotu zuen` (passive calque)
+- *Zalantza-hittak*: `abots→ahots`, `aborto→abortu`, `ahalderatu→ahalbidetu`
+  — Euskaltzaindiaren Hiztegiak explicitly says "don't use X, use Y"
+
+These have **nothing to do with ASR** — they apply to any text a bilingual Basque
+speaker writes. And they're authoritative (Euskaltzaindia's EBE), deterministic, and
+high-confidence — perfect for the rule engine.
+
+**Decision: promote EBE calque/zalantza rules to the main P1 next-step.** This
+realigns txukun as Grammarly-for-Basque (catches real speaker errors) rather than
+ASR post-processor (fixes machine artifacts).
+
+### Finding 3: Elhuyar GEC benchmark does NOT cover calques/zalantzak
+
+This was the key eval-strategy question. The existing `tests/gec-benchmark/`
+contains the Elhuyar GEC corpus (Dea/Dem TSV files, ~6000 sentence pairs). I
+examined the error-type distribution:
+
+```
+Dea_single (2000 pairs):  R2=1077, R4=615, R3=154, R1=154
+Dem_single (manually revised, 250 pairs):  R2=118, R4=71, R3=25, R1=7
+```
+
+Inspecting examples of each R-code:
+
+| Code | What it is | Example |
+|---|---|---|
+| R1 | Verb tense (synthetic morphology) | `etorriko zen→etortzen zen`, `egingo dute→egiten dute` |
+| R2 | Case/agreement (auxiliary) | `gehitu behar zaio→gehitu behar dio`, `Titin da→Titin du` |
+| R3 | Determiner/case (ergative) | `gehienek→gehienak`, `Roentgenek→Roentgenak` |
+| R4 | Subordinator suffix | `zaidalako→zaidalaren`, `litekeena da→litekeela da` |
+
+**All four R-codes are synthetic morphology errors** — verb tense, case agreement,
+determiners, suffixes. These are exactly what GECToR (Tier 3) is trained to fix.
+They are **NOT** lexical-choice errors (calques) or word-substitution errors
+(zalantzak).
+
+**Implication**: The Elhuyar benchmark cannot measure EBE calque/zalantza rules.
+Those rules operate on a different error class (lexical selection, not inflection).
+The benchmark would show zero improvement from adding calque rules, even if the
+rules work perfectly — because its sentences don't contain calque errors.
+
+### Finding 4: EBE itself is the golden set for calque/zalantza rules
+
+The EBE reference files ARE the labeled dataset:
+- `ebe-zal.txt`: each entry is a `(dispreferred form → recommended form)` pair,
+  explicitly marked "ez erabili X, erabili Y" by Euskaltzaindiaren Hiztegiak
+- `ebe-kal.txt`: each entry is a `(calque → correct form)` pair with the calque
+  marked with `*`
+
+**Eval strategy decided**:
+1. **Zalantza + lexical calque rules** (batches 1–2): unit-test against the
+   EBE pairs themselves. The rule's job is "given X, output Y" — testable as
+   exact-match assertions extracted from ebe-zal.txt / ebe-kal.txt. ~30-50
+   zalantza pairs + ~20-30 lexical calque pairs.
+2. **Syntactic calque rules** (batch 3): these need sentence context
+   (`*Nekatuta naiz` → `Nekatuta nago` — the rule must detect "naiz" after an
+   adjective where "nago" is required). Create a small `tests/ebe-rules/cases.json`
+   suite (10-15 sentences) extracted from EBE's own examples.
+
+### Finding 5: Zalantza rules are the natural batch 1 — simplest, most deterministic
+
+Among the EBE rule batches, zalantza-hittak are the lowest-risk starting point:
+- **Word-level replacement** (no context needed): `abots` → `ahots` is a pure
+  token substitution, no morphology, no syntax.
+- **EBE provides exact pairs**: no interpretation needed — the rule data is
+  extracted directly from the reference file.
+- **High confidence**: Euskaltzaindiaren Hiztegiak explicitly recommends these.
+- **Low false-positive risk**: the dispreferred forms are unambiguously wrong
+  (not register-dependent like the "secondary" forms EBE marks in normal type).
+
+Contrast with syntactic calques (batch 3): `*Nekatuta naiz` requires detecting
+that "naiz" follows a participle-adjective where Basque uses "nago" (state-of-being
+verb, not izan). That needs at minimum a part-of-speech heuristic — which triggers
+the deferred `src/core/tokenizer.js` POS work (§7.8 decision: don't build POS until
+a rule actually requires it).
+
+### Summary of roadmap reframe
+
+| | Before | After |
+|---|---|---|
+| Next P1 step | F3 ASR normalization (c081-c083) | EBE zalantza rules (batch 1) |
+| Positioning | ASR post-processor | General-purpose Basque writing tool |
+| Eval harness | cap-punct suite (ASR-flavored) | EBE pair unit-tests + small calque suite |
+| F3 status | Core roadmap | Deferred to optional "ASR mode" toggle |
+
+The cap-punct suite (33 cases, 100% strict) remains as a regression guard for the
+existing rule layer. It is NOT the right harness for measuring new EBE rules, which
+is why a separate eval strategy (Finding 4) is needed.

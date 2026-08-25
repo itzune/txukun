@@ -1,15 +1,20 @@
-# 🧹 Txukun — Euskarazko testu zuzentzailea
+# Txukun — Euskarazko idazketa-zuzentzailea
 
-> Basque text correction tool — capitalization, punctuation, and spelling
+> Basque writing assistant — grammar, spelling, capitalization & punctuation
 
 [![Deploy](https://github.com/itzune/txukun/actions/workflows/deploy.yml/badge.svg)](https://github.com/itzune/txukun/actions/workflows/deploy.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Txukun** is a browser-based tool that restores capitalization and punctuation in Basque text. It's the downstream complement to [Parakeet-eu](https://github.com/itzune/parakeet-eu) ASR, completing the speech-to-text pipeline:
+**Txukun** is a browser-based writing assistant for Basque. It checks grammar, spelling, capitalization, and punctuation — the same layers as Grammarly, but for Euskara, and with everything running privately in your browser. It combines three neural models with a deterministic rule engine grounded in [Euskaltzaindia](https://www.euskaltzaindia.eus/)'s EBE reference.
 
-```
-🎤 Audio → Parakeet-eu (ASR) → lowercase text → 🧹 Txukun → properly formatted text
-```
+- ✍️ **Grammar** — verb agreement, case, tense, suffix errors (GECToR)
+- 🔤 **Spelling** — context-aware re-ranking with BERTeus, on top of a 160k-word dictionary
+- 🔠 **Capitalization & punctuation** — MarianMT model + EBE-grounded rule engine
+- 🔒 **Private** — your text never leaves your device; all inference is in-browser (WASM)
+- 🆓 **Free & open-source** — built with open models and tools
+- 🇪🇺 **Basque-first** — UI available in Basque and English
+
+It works on any Basque text — articles, emails, essays. It's also a great fit for cleaning up [speech-to-text](https://github.com/itzune/parakeet-eu) output (ASR transcripts lack capitalization and punctuation), but that's one use case among many, not the whole tool.
 
 ## 🌐 Website
 
@@ -17,18 +22,18 @@
 
 ## ✨ Features
 
-- **Capitalization & punctuation** — restores caps and punctuation to raw/lowercase text
+- **Grammar correction** — GECToR edit-based correction (int4 ONNX, ~85 MB) fixes real-word errors like verb agreement, case, tense, and suffix mistakes that spell check cannot detect
+- **Spell checking** — 160k-word dictionary with click-to-fix suggestions, enhanced by **BERTeus neural re-ranking** (int4 ONNX, 85 MB) for context-aware candidate selection
+- **Capitalization & punctuation** — MarianMT model restores caps/punctuation, refined by an **EBE-grounded rule engine** (deterministic rules from Euskaltzaindia's EBE reference: sentence boundaries, terminal punctuation, vocative commas)
+- **Error detection heatmap** — GECToR's detection head flags suspected error words on the input text with a color-coded heatmap (amber → red by confidence)
 - **Privacy-first** — everything runs in your browser, text never leaves your device
 - **Free & open-source** — built with open models and tools
 - **Basque-first** — UI available in Basque and English
 - **Fast** — models are loaded once and cached
 
-- **Spell checking** — word-list–based Basque spell checker (160k words) with click-to-fix suggestions, enhanced by **BERTeus neural re-ranking** (int4 ONNX, 85 MB) for context-aware candidate selection
-- **Grammar correction** — GECToR edit-based grammar correction (int4 ONNX, ~85 MB) fixes real-word errors like verb agreement, case, tense, and suffix mistakes that spell check cannot detect
-- **Error detection heatmap** — GECToR's detection head flags suspected error words directly on the input text with a color-coded heatmap (amber → red by confidence), before any correction is applied
+### Coming soon
 
-### Coming soon (Phase 2)
-
+- **Basque calque & doubtful-word rules** — deterministic rules from Euskaltzaindia's EBE (lexical calques like `balore→balio`, doubtful words like `abots→ahots`)
 - **Diff view** — see exactly what changed
 - **Real-time mode** — correct as you type
 
@@ -50,13 +55,16 @@ Each model is **lazy-loaded** only when needed, so they add no cost to normal ty
 Input text
   │
   ├─ 1. Spell check (Tier 1: dictionary + edit distance → Tier 2: BERTeus re-ranking)
-  ├─ 2. Cap-punct (MarianMT)
+  ├─ 2. Cap-punct (MarianMT) → EBE-grounded rule engine (sentence boundaries,
+  │       terminal punctuation, vocative commas, sentence-initial caps)
   ├─ 3. Grammar correction (GECToR)
   │     └─ also: error detection heatmap on input (GECToR detect head)
   └─ 4. Spell check (remaining errors annotated)
   │
 Output text
 ```
+
+The **rule engine** runs on the cap-punct model output (and even without the model — "Txukun Lite" mode — providing basic capitalization, punctuation, and comma fixes before any neural model loads). Its rules are grounded in [Euskaltzaindia](https://www.euskaltzaindia.eus/)'s EBE (*Euskararen Aholkularia*) reference: sentence boundaries (§1), terminal punctuation `.`/`?`/`!` (§1, §2.3, §6), vocative commas (koma §3), and sentence-initial capitalization (Maiuskulak §1.1).
 
 ### Model 1 — Cap-punct (MarianMT)
 
