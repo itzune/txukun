@@ -45,7 +45,7 @@ It's part of the [Itzune](https://itzune.eus) ecosystem of Basque language AI to
 | `src/core/document.js` | Tokenizer + Document (span-based token model, iterSentences) |
 | `src/core/engine.js` | Rule engine: runRules() with iterative apply |
 | `src/core/diff.js` | Pure word-level LCS diff (`diffWords`, `isCasePunctOnly`) — shared by analyze.js + tests |
-| `src/core/rules/` | EBE-grounded rules: sentence-boundary, sentence-initial-cap, terminal-punct, vocative-comma (+ shared `greetings.js` data) |
+| `src/core/rules/` | EBE-grounded rules: sentence-boundary, sentence-initial-cap, terminal-punct, vocative-comma, zalantza-words, zalantza-phrases, calque (+ shared `greetings.js` data) |
 | `src/core/clean-output.js` | Pure model output cleaning (shared by production + eval) |
 | `src/i18n.js` | Basque/English translations with dot-path resolver |
 | `src/ui-bindings.js` | DOM references, status indicator, progress bar, buttons, toast system |
@@ -118,7 +118,7 @@ const model = await AutoModel.from_pretrained('itzune/berteus-onnx', {
 
 ### Graceful degradation
 
-All three models degrade gracefully — if any model fails to load, the pipeline falls back to the previous tier. The **rule engine runs independently** ("Txukun Lite" mode): basic capitalization, punctuation, and comma fixes work even before any neural model loads.
+All three models degrade gracefully — if any model fails to load, the pipeline falls back to the previous tier. The **rule engine runs independently** ("Txukun Lite" mode): capitalization, punctuation, comma fixes, zalantza (doubtful word) substitution, and calque (loan-translation) correction all work even before any neural model loads.
 
 ## i18n
 
@@ -161,4 +161,4 @@ Itzune projects follow Basque-themed naming:
 - MarianMT (cap-punct) output contains special tokens (`<unk>`, `</s>`, `<s>`, `<pad>`) — must be cleaned via `cleanModelOutput()` (`src/core/clean-output.js`)
 - q8 quantization is **lossless** for cap-punct (q8 = fp32 on the golden suite). The Hub has no fp16 files; `'fp16'` dtype 404s. int4 (BERTeus, GECToR) is a lossy but validated quantization.
 - The cap-punct model was trained on ASR-style lowercase input — it has a ~82% ceiling on general text. The rule engine closes the gap (lifts strict accuracy 81.8%→100%). See `tests/cap-punct/BASELINE.md`.
-- No EBE calque/zalantza rules yet (P1 next step — see `TODO.md` and `RESEARCH.md` §7.11)
+- EBE calque/zalantza rules shipped (P1): zalantza-words (720 pairs), zalantza-phrases (52 pairs), calque (4 pairs). See `TODO.md` and `RESEARCH.md` §7.12–§7.15

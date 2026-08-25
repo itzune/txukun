@@ -9,38 +9,48 @@ All notable changes to Txukun will be documented in this file.
 ### Added
 - **Zalantza-hitzak rule** (`src/core/rules/zalantza-words.js`) — the first
   EBE-grounded *general-purpose writer* rule (not ASR-specific). Corrects
-  628 doubtful words that Euskaltzaindia explicitly recommends against (Spanish/
-  French loanwords, dialectal forms, apocopes) by replacing them with their
-  standard forms: `abots→ahots`, `aborto→abortu`, `amapola→mitxoleta`,
-  `onda→uhin`, `xori→txori`. Case-preserving (lower / Title / UPPER; mixed-case
-  tokens skipped as a proper-noun guard). Word-boundary safe (declined forms like
-  `abortoak` are untouched). Priority 45 (runs after structural cap/punct rules).
-  Surfaced as `Confusable`-kind lint cards in both the model-loaded and
-  Txukun Lite (rules-only) paths.
-- `src/core/data/zalantza.js` — the 628-pair frozen dictionary, extracted
-  directly from Euskaltzaindia's EBE appendix PDF (pp. 479–490) via pdfplumber
-  character-color analysis (RED = dispreferred, BOLD = standard). Verified: 0
-  compound-fragment leaks, 0 idempotency overlap (no X→Y→Z chains), 0
-  verb/function-word collisions (`gara` = "we are" excluded). See `RESEARCH.md`
-  §7.12 for the full extraction methodology and 5-check verification.
-- `tests/core/zalantza.test.mjs` — 30 unit tests: data integrity, single-word
-  substitution across categories, case preservation, guards (mixed-case skip,
-  idempotency, compound-fragment safety, verb-collision safety, word-boundary),
-  in-context sentences, and full rule-stack integration.
-- `docs/ebe-reference/extract-zalantza.py` — reproducible extraction script.
-- `docs/ebe-reference/zalantza-multi.tsv` — 108 multi-word phrase pairs deferred
-  to batch 2.
-- `docs/ebe-reference/zalantza-ambiguous.tsv` — 5 context-dependent pairs
-  skipped.
+  720 doubtful words (628 batch 1 + 92 batch 2a singles) that Euskaltzaindia
+  explicitly recommends against (Spanish/French loanwords, dialectal forms,
+  apocopes) by replacing them with their standard forms: `abots→ahots`,
+  `aborto→abortu`, `amapola→mitxoleta`, `onda→uhin`, `xori→txori`.
+  Case-preserving (lower / Title / UPPER; mixed-case tokens skipped as a
+  proper-noun guard). Word-boundary safe (declined forms like `abortoak` are
+  untouched). Priority 45. Surfaced as `Confusable`-kind lint cards in both the
+  model-loaded and Txukun Lite (rules-only) paths.
+- `src/core/data/zalantza.js` — the 720-pair frozen dictionary (628 batch 1 +
+  92 batch 2a), extracted from Euskaltzaindia's EBE appendix PDF (pp. 479–490)
+  via pdfplumber character-color analysis (RED = dispreferred, BOLD = standard).
+  Verified: 0 compound-fragment leaks, 0 idempotency overlap, 0 verb/function-word
+  collisions (`gara` excluded). See `RESEARCH.md` §7.12–§7.13.
+- **Zalantza-esapideak rule** (`src/core/rules/zalantza-phrases.js`) —
+  multi-word phrase substitution (batch 2a Phase 2). Corrects 52 phrases the
+  single-word rule cannot match (tokenizer splits on hyphens):
+  `kontutan hartu→kontuan hartu`, `aire-garraio→aireko garraio`,
+  `gora-behera→gorabehera`. Sliding-window token-sequence match.
+  Priority 46. See `RESEARCH.md` §7.13.
+- `src/core/data/zalantza-phrases.js` — 52-pair frozen array (33 TSV phrases +
+  19 reclassified hyphenated compounds that were dead code in the single-word
+  file).
+- **Kalko lexiko-semantikoak rule** (`src/core/rules/calque.js`) — EBE-grounded
+  loan-translation correction (batch 2b). Corrects 4 calque pairs:
+  `balore→balio`, `erasokor→erasotzaile` (single words),
+  `pena merezi→merezi`, `zentzu bakarreko→noranzko bakarreko` (phrases).
+  Combined word-lookup (priority 47) + phrase sliding-window (priority 48) in
+  one rule. `LintKind.Calque`. 4 other pairs already covered by zalantza rule.
+  See `RESEARCH.md` §7.15.
+- `src/core/data/calque.js` — 2-word + 2-phrase calque data.
+- `tests/core/zalantza.test.mjs` — 50 unit tests.
+- `tests/core/zalantza-phrases.test.mjs` — 39 tests.
+- `tests/core/calque.test.mjs` — 41 tests.
+- `docs/ebe-reference/extract-zalantza.py` — reproducible extraction script (v6).
 
 ### Changed
-- `src/core/rules/index.js` — registered `zalantzaWords` in `allRules` (now 5
-  rules: sentence-boundary → sentence-initial-cap → vocative-comma →
-  terminal-punct → zalantza-words).
-- `package.json` — `test:core` now also runs `zalantza.test.mjs` (59 → 89 tests
-  total across the three core test files).
-- `TODO.md` — zalantza batch 1 marked done; estimate corrected (30–50 → 628
-  actual pairs); multi-word zalantza split out as batch 2a.
+- `src/core/rules/index.js` — registered `zalantzaWords`, `zalantzaPhrases`, and
+  `calque` in `allRules` (now 7 rules: sentence-boundary → sentence-initial-cap
+  → vocative-comma → terminal-punct → zalantza-words → zalantza-phrases →
+  calque).
+- `package.json` — `test:core` now runs 5 test files (189 tests total).
+- `TODO.md` — zalantza batches 1, 2a, and 2b marked done.
 
 ### Notes
 - The cap-punct golden suite (22/22 strict) is unchanged — zalantza is

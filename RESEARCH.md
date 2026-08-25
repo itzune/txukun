@@ -2069,3 +2069,156 @@ eduki osoa ez da hitzez hitz irakurrita — izenak eta deskribapen orokorrak
 baizik. F5 gazetteer-a erauzteko unean, atal hauen eduki osoa berreskuratu
 eta erauzketa-datua egiaztatu beharko da.
 
+---
+
+## 7.15 Kalko lexiko-semantikoak — EBE §1 analisia eta egiaztapena (batch 2b)
+
+### Aurrekariak
+
+EBEren *Kalko desegoki nabarmen batzuk* atalak bi azpi-atal ditu:
+
+1. **§1 Kalko lexiko-semantikoak** (ebe-kal.txt lerroak 5–96): hitz- edo
+   esapide-mailako ordezkapenak — batch 2b-ren esparrua
+2. **§2 Kalko morfosintaktikoak** (lerroak 97–477): esaldi-mailako berridazketak
+   — batch 3-ra atzeratuta (POS/gramatika behar du)
+
+Zalantzak (§7.12–7.13) ez bezala, kalkoak **itzulpen-okerrak** dira: erderaren
+(esgelaiera/frantsesa) eredu bat euskarara kopiatzea, jatorrizko hitza erabili
+beharrean. Zalantzak, berriz, bi hitz balioren arteko aukeraketa zalantzatsuak
+dira.
+
+### §1 sarrera-analisia (34 sarrera)
+
+`/tmp/extract_calques.py` extraktorearekin kategorizatu ziren 34 sarrerak:
+
+| Kategoria | Kop. | Adibideak | Statusa |
+|---|---|---|---|
+| CLEAN_WORD | 5 | `belgiar→belgikar`, `balore→balio` | Ship (3 zalantzan errepikatuta) |
+| CLEAN_PHRASE | 4 | `pena merezi→merezi`, `zentzu bakarreko→noranzko bakarreko` | Ship (2 errepikatuta/deferred) |
+| SENTENCE | 9 | `*Euria dago→Euria ari du` | Atzeratu (batch 3) |
+| CONTEXT_DEP | 6 | `proba/froga`, `gizona/gizakia` | Atzeratu (testuingurua behar) |
+| MULTI_TARGET | 5 | `*ideologia anitza→askotariko/ideologia plurala` | Atzeratu (2+ helburu) |
+| OPTIONAL | 3 | `*eta abar luze bat→eta abar(,) eta abar` | Atzeratu (aukerazko elementuak) |
+| MORPHOLOGICAL | 3 | `*berdina→bera` (deklinabidea), `*jolastu→jokatu` (adierazpena) | Atzeratu (stem+atzizkia) |
+| PROPER_NOUN | 1 | `*Errege Katolikoak→Errege-erregina Katolikoak` | Atzeratu (F5) |
+| QUESTIONABLE | 1 | `?eskaini` (galdera-marka) | Atzeratu |
+| USAGE_NOTE | 1 | `ospatu bilera→bilera egin` (erabilera, ez kalko) | Atzeratu |
+
+**Emaitza**: 8 sarrera garbi, 26 atzeratuta.
+
+### Hiztegi-egiaztapena (Euskaltzaindiaren Hiztegia)
+
+8 sarrera garbiak Euskaltzaindiaren Hiztegiaren bilatzailearen bidez
+egiaztatu ziren (`com_hiztegianbilatu` osagaiak, `osagaiakHasi` irizpidea):
+
+| Hitza | EH emaitzak | OEH | Oharrak | Erabakia |
+|---|---|---|---|---|
+| `belgiar` | (zalantzan jada) | `* e.` marka | Atzizki kalkeztatua (-ar) | Zalantzan ✅ |
+| `europear` | **0 emaitza** | — | Ez dago hiztegian | Ship ✅ |
+| `egipziar` | (belgiar eredu bera) | — | Atzizki kalkeztatua | Ship ✅ |
+| `balore` | 3 emaitza | Bai | `balio`-rako erreferentzia gurutzatua | Ship (leunagoa) ⚠️ |
+| `erabakior` | 1 emaitza | Bai | `erabakigarri`-rako redirect | Ship ✅ |
+| `erasokor` | 1 emaitza | Bai | OEH bakarrik (historikoa), ez EH | Ship ✅ |
+| `pena merezi` | — | — | `pena` bakarrik = baliozkoa (mina) | Esapidea bakarrik ✅ |
+| `zentzu bakarreko` | — | — | `zentzu` bakarrik = baliozkoa (zentzua) | Esapidea bakarrik ✅ |
+
+**Gako-aurkikuntza**: 4 sarrera garbi (`belgiar`, `europear`, `egipziar`,
+`erabakior`) **jada `zalantza.js`-n daude** — EBEk bi ataletan zerrendatzen
+ditu (zalantza + kalko). Helburuak identikoak dira bi iturrietan
+(egiaztatuta: `belgiar→belgikar` zalantzan eta kalkoan). Ez dugu bikoiztu
+ez dutelako funtzionatzen — zalantza-arauak (priority 45) aurretik hartzen ditu.
+
+### `balore` kasu berezia
+
+`balore`k 3 emaitza ditu EH-n, baina denak `balio`-rako erreferentzia
+gurutzatuak dira (adib. `balore-eskala→balio eskala`). EBEk ez du `*` markarik
+jarri (§1-eko beste sarrera batzuk bezala: `erabakior`, `erasokor`,
+`ospatu`). Hau **zalantza>kalke** mugikorra da: `balore` hiztegian badago,
+baina EBEk normatiboki `balio` gomendatzen du. Grammarly-moduko zuzentzaile
+normatibo baterako, markatzea egokia da — erabiltzaileak baztertu dezake.
+
+### Diseinu-erabakiak
+
+1. **Fitxategi bereizia**: `src/core/data/calque.js` + `src/core/rules/calque.js`.
+   Kalkoak linguistikoki desberdinak dira zalantzak ez bezala (itzulpen-okerrak
+   vs. aukeraketa zalantzatsuak). `LintKind.Calque` erabiltzen du (jada existitzen
+   zen `types.js`-n!), ez `LintKind.Confusable`.
+
+2. **Arau bakarra, fase bikoitza**: `calque.js`-k hitz bakuna (priority 47) eta
+   esapidea (priority 48) arau bakar batean konbinatzen ditu. Zalantzak bezala,
+   bi arau bereizi beharrean (priority desberdinak), arau bakarrak bi fase
+   exekutatzen ditu. 4 sarrera baino ez daudenez, 4 fitxategi sortzea (datu +
+   arau × 2) gehiegi litzateke.
+
+3. **`matchCase()` berrerabiltzea**: zalantza-words.js-tik inportatzen da
+   (`import { matchCase } from './zalantza-words.js'`). Menpekotasun norabide
+   bakarra (kalke → zalantza), ziklorik gabe. YAGNI: ez generic util-era
+   ateratako.
+
+4. **Esapide-matching berrerabili**: zalantza-phrases-en algoritmo bera
+   (sliding-window token-sequence match). Hitzak case-insensitive match;
+   puntuazioa exact match (marratxoa ≠ zuriunea). Case lehen hitzetik mantentzen
+   da `matchCase()` bidez.
+
+5. **`pena merezi→merezi`**: esapidea 2 token, helburua 1 hitz. Matcherrak
+   2-token span-a 1-hitza helburuarekin ordezten du. Case kontserbatzea funtzionatzen
+   du: `Pena merezi → Merezi` (Title), `PENA MEREZI → MEREZI` (UPPER).
+
+6. **False-positive zaindariak**: `pena` bakarrik ez da markatzen (mina =
+   baliozkoa). `zentzu` bakarrik ez da markatzen (zentzua = baliozkoa).
+   `zentzu bakar bat` ez da markatzen (ez da kalke-esapidea). Esapide-matcherrak
+   bakarrik 2-token sekuentzia zehatza markatzen du.
+
+### Egiaztapenak
+
+`/tmp/validate_calques.mjs` scriptak 26 egiaztapen exekutatu zituen:
+- 0 barne-bikoiztu, 0 idempotentzia-kate, 0 no-op
+- 0 overlap zalantza datuarekin (bai hitzetan, bai esapidetan)
+- 0 kate-arrisku zalantza↔kalke (bi noranzketetan)
+- 0 word/phrase first-word overlap
+
+### Emaitzak
+
+- **41 test berri** (`tests/core/calque.test.mjs`): data integrity, hitz
+  ordezkapena, case kontserbatzea (lower/Title/UPPER), mixed-case skip,
+  esapide ordezkapena, false-positive zaindariak, idempotentzia, full-stack
+  integrazioa (zalantza + kalko elkarrekin)
+- **189 core test guztiak pasa** (148 aurretik + 41 berri)
+- **Cap-punct eval: 22/33 strict** (aldaketarik gabe — 0 regressio)
+- **Vite build: OK**
+- **7 arau orain** (allRules: sentence-boundary, sentence-initial-cap,
+  vocative-comma, terminal-punct, zalantza-words, zalantza-phrases, calque)
+
+### Atzeratutako sarrerak (batch 3+)
+
+26 sarrera atzeratuta daude, hurrengo arrazoiengatik:
+
+1. **Esaldi-maila (9)**: `*Euria dago→Euria ari du` — aditz-egituren
+   berridazketa osoa, POS/gramatika behar du
+2. **Testuinguru-mendeko (6)**: `proba/froga` — `proba` baliozkoa da testuinguru
+   batzuetan (proba fisikoa) baina ez bestetan (froga legala)
+3. **Multi-helburu (5)**: `*ideologia anitza→askotariko ideologia, ideologia
+   plurala` — 2+ zuzenak, aukeraketa testuinguruaren araberakoa
+4. **Morfologiko (3)**: `*berdina→bera` deklinabide osoa (berdinean→berean,
+   berdinak→berak...), `*jolastu→jokatu` adierazpena (jolasten→jokatuen...).
+   Stem+atzizki match behar du
+5. **Izen berezi (1)**: `*Errege Katolikoak→Errege-erregina Katolikoak` — F5
+   gazetteer-era
+6. **Zalantzazkoa (1)**: `?eskaini` — galdera-markak ziurtasunik ez duela adierazten du
+7. **Erabilera-oharra (1)**: `ospatu` — baliozko hitza (ospatu = ospakizuna egin),
+   baina erabilera okerra bilera/partidetan. Ez da kalkea, erabilera-gomendioa
+
+### Egiaztapen-egoera
+
+| Baieztapena | Iturria | Egiaztatuta? |
+|---|---|---|
+| EBE §1-k 34 sarrera ditu | `ebe-kal.txt` lerroak 5–96 | Bai |
+| 8 sarrera garbi dira (hitza/esapide ordezkapena) | extraktorearen kategorizazioa | Bai |
+| 4 garbi zalantzan daude jada | `validate_calques.mjs` cross-check | Bai |
+| `europear` ez dago EH-n (0 emaitza) | EH bilaketa `osagaiakHasi` | Bai |
+| `erabakior` EH-k `erabakigarri`-ra redirect | EH bilaketa (1 emaitza, redirect) | Bai |
+| `erasokor` OEH-n bakarrik (historikoa) | EH bilaketa (OEH cross-link) | Bai |
+| `balore` EH-n dago baina `balio`-ra cross-ref | EH bilaketa (3 emaitza, cross-ref) | Bai |
+| Helburuak identikoak bi EBE ataletan | node script konparaketa | Bai |
+| 0 zalantza↔kalke kate-arrisku | `validate_calques.mjs` (26 check) | Bai |
+
