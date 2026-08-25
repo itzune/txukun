@@ -46,7 +46,13 @@ const MAX_ITERATIONS = 5;
 // Punctuation tokenization (must match training data preprocessing).
 // The model was trained on data where punctuation is space-separated
 // from words (e.g., "kaixo," → "kaixo ,").
-const PUNCT_RE = /([.,;:!?()«»"'\-\u2013\u2014])/g;
+//
+// NOTE: Hyphens (-) are intentionally NOT split. In Basque, hyphens join
+// compound words (hego-ekialdea, Madril-Sevilla, euskal-espainiar) — they
+// are morphological, not sentence punctuation. Splitting them caused GECToR
+// to destroy compounds ("hego-ekialdetik" → ["hego","-","ekialdetik"] →
+// "hego-"). The BPE tokenizer handles hyphenated words as-is.
+const PUNCT_RE = /([.,;:!?()«»"'\u2013\u2014])/g;
 
 // Model source: HuggingFace Hub (models are too large for git/GitHub Pages).
 // The repo itzune/gector-eus-onnx contains: onnx/model_q4.onnx (85MB int4),

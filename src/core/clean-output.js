@@ -25,6 +25,10 @@ export function cleanModelOutput(text) {
     .replace(/<\/?s>/g, '')   // <s> and </s> (BOS/EOS)
     .replace(/<pad>/g, '')    // padding
     .replace(/<unk>/g, '')    // unknown tokens
+    .replace(/[¡¿]/g, '')     // Spanish inverted marks — never valid in Basque
+                               // (EBE Puntuazioa §6 uses only terminal ? and !).
+                               // The cap-punct model sometimes hallucinates
+                               // these; strip them so they never reach the UI.
     .replace(/\s{2,}/g, ' ')  // collapse runs of whitespace
     .trim();
 }
