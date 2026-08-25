@@ -297,8 +297,10 @@ function buildContext(plainText, from) {
 
 import { correctCapPunct, isModelReady, isSpellReady } from './models.js';
 import { checkSpelling, getBestCorrection, checkWord } from './spell.js';
-import { correctGrammar, detectGrammar, isGectorReady, initGector } from './gector.js';
+import { correctGrammar, detectGrammar, isGectorReady, isGectorFailed, initGector } from './gector.js';
 import { diffWords, isCasePunctOnly } from './core/diff.js';
+import { runRules } from './core/engine.js';
+import { allRules } from './core/rules/index.js';
 
 let errCounter = 0;
 const nextId = () => `e${++errCounter}`;
@@ -313,18 +315,61 @@ const nextId = () => `e${++errCounter}`;
  * @param {string} mdText - raw markdown from the editor
  * @returns {Promise<Array>}
  */
-export async function analyzeText(mdText) {
+export async function analyzeText(mdText, onProgress, onBatch) {
   if (!mdText || !mdText.trim()) return [];
 
   // Strip markdown → plain text + offset map + heading ranges
   const { text: plainText, map, headingRanges } = stripMarkdown(mdText);
   if (!plainText.trim()) return [];
 
-  // Run the three detectors SEQUENTIALLY on plain text — ONNX Runtime
-  // Web (WASM) cannot execute multiple sessions concurrently.
-  const grammarErrors = await detectGrammarErrors(plainText);
-  const spellingErrors = await detectSpellingErrors(plainText);
+  // Helper: finalize a batch of plain-text errors (context + offset map)
+  // and stream them to the UI immediately.
+  const emit = (errors) => {
+    if (!errors || errors.length === 0) return;
+    for (const e of errors) e.context = buildContext(plainText, e.from);
+    const mapped = errors.map((e) => ({
+      ...e,
+      from: mapOffset(e.from, map, false),
+      to: mapOffset(e.to, map, true),
+    }));
+    onBatch?.(mapped);
+  };
+
+  // Yield to the browser's event loop so DOM changes (cards painted, 
+  // progress text updated) are rendered before ONNX WASM inference
+  // blocks the main thread for several seconds per segment.
+  const yieldToBrowser = () => new Promise((r) => setTimeout(r, 0));
+
+  // ── Batch 1 (instant, <10ms): rule engine only ("Txukun Lite") ──
+  // Run rules directly on the plain text so the user sees zalantza,
+  // calque, cap-punct-rule suggestions immediately — before any neural
+  // model runs. These may partially overlap later model output; the
+  // final merge/dedupe at the end reconciles.
+  const ruleErrors = detectRuleErrors(plainText, headingRanges);
+  emit(ruleErrors);
+  await yieldToBrowser();
+
+  // ── Fire Hunspell in parallel (runs in a Web Worker — independent ──
+  // of the ONNX WASM runtime, so it doesn't compete with cap-punct/grammar).
+  onProgress?.({ stage: 'spelling' });
+  const spellPromise = detectSpellingErrors(plainText);
+
+  // ── Grammar (ONNX main thread, non-blocking) ──
+  const grammarErrors = await detectGrammarErrors(plainText, onProgress);
+  emit(grammarErrors);
+  await yieldToBrowser();
+
+  // ── Cap-punct (ONNX main thread — after grammar, since both use ──
+  // the WASM runtime which serializes sessions).
+  onProgress?.({ stage: 'cappunct' });
+  await yieldToBrowser();
   let capPunctErrors = await detectCapPunctErrors(plainText, headingRanges);
+  emit(capPunctErrors);
+  await yieldToBrowser();
+
+  // ── Await spelling (was running in parallel — likely done by now) ──
+  const spellingErrors = await spellPromise;
+  emit(spellingErrors);
 
   // Merge overlapping spelling/grammar + cap-punct errors: when a
   // correction and a cap-punct case change touch the same word, apply
@@ -364,13 +409,19 @@ export async function analyzeText(mdText) {
 // against the original (word-level LCS) to extract per-span changes,
 // each becoming a grammar suggestion with original character offsets.
 
-async function detectGrammarErrors(text) {
+async function detectGrammarErrors(text, onProgress) {
   const errors = [];
   try {
+    // Don't block on GECToR download. If it isn't ready yet (it loads in
+    // the background after startup), skip grammar this run instead of
+    // freezing the UI for 50-120s. The background load continues; the
+    // next Aztertu click will have it ready.
     if (!isGectorReady()) {
-      await initGector();
-      if (!isGectorReady()) return errors;
+      onProgress?.({ stage: 'grammar', skipped: true });
+      if (!isGectorFailed()) initGector(); // ensure background load (idempotent)
+      return errors;
     }
+    onProgress?.({ stage: 'grammar', skipped: false });
     const { corrected } = await correctGrammar(text);
     if (!corrected || corrected === text) return errors;
 
@@ -529,6 +580,46 @@ function capPunctTitle(from, to) {
   return 'Puntuazioa';
 }
 
+// ── Rule-only instant detection ("Txukun Lite" batch) ───────────────
+//
+// Runs the deterministic rule engine directly on the plain text and
+// diffs the result — same logic as detectCapPunctErrors but WITHOUT
+// the neural model. Used to surface instant suggestions (<10ms) before
+// the MarianMT/GECToR/Hunspell models finish. The final merge/dedupe
+// at the end of analyzeText() reconciles any overlap with model output.
+function detectRuleErrors(text, headingRanges = []) {
+  try {
+    const { corrected } = runRules(text, allRules);
+    if (!corrected || corrected === text) return [];
+    const errors = [];
+    const changes = diffWords(text, corrected);
+    for (const ch of changes) {
+      if (ch.type !== 'replace') continue;
+      if (!isCasePunctOnly(ch.fromText, ch.toText)) continue;
+      if (
+        isInHeading(ch.fromOffset, headingRanges) &&
+        ch.fromText.toLowerCase() !== ch.toText.toLowerCase()
+      )
+        continue;
+      errors.push({
+        id: nextId(),
+        from: ch.fromOffset,
+        to: ch.toOffset,
+        original: ch.fromText,
+        suggestion: ch.toText,
+        category: 'cappunct',
+        title: capPunctTitle(ch.fromText, ch.toText),
+        status: 'pending',
+        confidence: 1.0, // rules are deterministic — full confidence
+      });
+    }
+    return errors;
+  } catch (err) {
+    console.warn('[analyze] rule detection failed:', err);
+    return [];
+  }
+}
+
 // ── Word-level LCS diff — extracted to src/core/diff.js (P1)
 // (pure, Node-testable; see tests/core/txukun-lite.test.mjs)
 
@@ -615,9 +706,10 @@ function dedupeOverlaps(errors) {
 
 export async function detectHeatmap(mdText) {
   try {
+    // Don't block on GECToR download — see detectGrammarErrors.
     if (!isGectorReady()) {
-      await initGector();
-      if (!isGectorReady()) return [];
+      if (!isGectorFailed()) initGector();
+      return [];
     }
     const { text: plainText, map } = stripMarkdown(mdText);
     if (!plainText.trim()) return [];

@@ -141,21 +141,47 @@ async function onAnalyze() {
   btn.disabled = true;
   label.textContent = 'Aztertzen…';
   updateStatus('processing');
+  const skipped = new Set();
 
   try {
     // Clear previous errors
     clearErrors();
     clearCards();
 
-    const errors = await analyzeText(text);
+    // Incremental streaming: errors appear as each detector finishes,
+    // not all at once at the end. The rule engine (<10ms) shows first.
+    const streamed = [];
+    const onBatch = (batch) => {
+      streamed.push(...batch);
+      setErrors(streamed);
+      renderCards(streamed);
+    };
 
+    const errors = await analyzeText(text, (p) => {
+      if (p.skipped) { skipped.add(p.stage); return; }
+      label.textContent = ({
+        grammar: 'Gramatika aztertzen…',
+        spelling: 'Ortografia aztertzen…',
+        cappunct: 'Maiuskulak aztertzen…',
+      })[p.stage] || 'Aztertzen…';
+    }, onBatch);
+
+    // Final authoritative render (merged + de-duplicated + confidence-filtered)
     setErrors(errors);
     renderCards(errors);
 
+    const grammarSkipped = skipped.has('grammar');
     if (errors.length === 0) {
-      toast('Ez da akatsik aurkitu. 👍', 'success');
+      toast(
+        grammarSkipped
+          ? 'Ez da akatsik aurkitu (gramatika ez dago erabilgarri oraindik).'
+          : 'Ez da akatsik aurkitu. 👍',
+        grammarSkipped ? 'warning' : 'success',
+      );
     } else {
-      toast(`${errors.length} iradokizun aurkitu dira.`, 'info');
+      const msg = `${errors.length} iradokizun aurkitu dira.` +
+        (grammarSkipped ? ' Gramatika ez dago erabilgarri oraindik (eredua kargatzen).' : '');
+      toast(msg, grammarSkipped ? 'warning' : 'info');
     }
   } catch (err) {
     console.error('[txukun] analyze failed:', err);

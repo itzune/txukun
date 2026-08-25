@@ -272,6 +272,10 @@ export async function correctCapPunct(text) {
     matchRates.push(matchRate);
     segmentRates.push({ start: segStart, end: segStart + seg.text.length, rate: matchRate });
     offset += seg.text.length + seg.sep.length;
+    // Yield to the browser between segments so the UI can paint
+    // (progress text, cursor blink, etc.) instead of freezing for
+    // the entire multi-segment inference.
+    await new Promise((r) => setTimeout(r, 0));
   }
   const modelOutput = results.map((r) => r.text + r.sep).join('').trimEnd();
   // Apply deterministic rule layer on top of model output (P1)

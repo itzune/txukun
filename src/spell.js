@@ -299,8 +299,12 @@ export async function getBestCorrection(fullText, err) {
     let bert = null;
     try { bert = await getBERT(); } catch (e) { /* degrade to Tier 1 */ }
     if (bert && !bert.isBERTFailed()) {
+      // Don't block on the 193MB BERT download. If it isn't ready yet,
+      // kick off the background load (idempotent) and fall back to Tier 1
+      // this run — the next Aztertu click will have it ready. The guard
+      // below already skips bertRerank when not ready.
       if (!bert.isBERTReady()) {
-        await bert.initBERT();
+        bert.initBERT();
       }
       if (bert.isBERTReady()) {
         const candidates = ranked.slice(0, 5).map(c => c.word.toLowerCase());
