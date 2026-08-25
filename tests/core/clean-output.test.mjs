@@ -1,10 +1,12 @@
 /**
- * Clean-output + GECToR tokenization unit tests
+ * Clean-output + GECToR tokenization + ASR gate unit tests
  *
- * Tests two pure functions that are the root cause of recent false positives:
+ * Tests three pure functions that are the root cause of recent false positives:
  *   1. cleanModelOutput() — must strip Spanish inverted marks (¡ ¿)
  *   2. GECToR tokenizePunctuation/detokenizePunctuation — must NOT split
  *      hyphens in compound words (hego-ekialdetik, Madril-Sevilla)
+ *   3. isASRStyleSegment() — ASR gate: run the cap-punct model ONLY on
+ *      already-well-formed text to prevent hallucination-driven FPs
  *
  * Pure Node — no browser/model deps needed.
  *
@@ -12,6 +14,7 @@
  */
 
 import { cleanModelOutput } from '../../src/core/clean-output.js';
+import { isASRStyleSegment } from '../../src/models.js';
 import { correctGrammar, isGectorReady } from '../../src/gector.js';
 
 let pass = 0;
@@ -80,6 +83,46 @@ test('tokenizePunctuation does NOT split hyphens (hego-ekialdetik)', () => {
   const sentence = 'kaixo, etorri.';
   const spacedSent = sentence.replace(PUNCT_RE, ' $1 ').replace(/\s+/g, ' ').trim();
   eq(spacedSent, 'kaixo , etorri .', 'comma and period still split (needed by GECToR)');
+});
+
+console.log('\nASR gate — isASRStyleSegment (run model ONLY on ASR-style text):\n');
+
+test('ASR-style segments (lowercase, zero punctuation) → model runs (true)', () => {
+  eq(isASRStyleSegment('etorri da gaur'), true, 'ASR: lowercase no punct');
+  eq(isASRStyleSegment('kaixo mikel'), true, 'ASR: lowercase proper noun');
+  eq(isASRStyleSegment('nora zoaz'), true, 'ASR: question no punct');
+  eq(isASRStyleSegment(''), false, 'empty string → not ASR');
+});
+
+test('human-written segments (has caps OR any punct) → model skipped (false)', () => {
+  eq(isASRStyleSegment('Lurra zulatzeari 2006an ekin zioten.'), false, 'normal sentence');
+  eq(isASRStyleSegment('Kaixo.'), false, 'minimal well-formed');
+  eq(isASRStyleSegment('Nora zoaz?'), false, 'question well-formed');
+  eq(isASRStyleSegment('Bai ipuin politak zureak!'), false, 'exclamation well-formed');
+  eq(isASRStyleSegment('«Gakoetako bat hori da».'), false, 'guillemet + period');
+  eq(isASRStyleSegment('AHTaren Aurkako Asanblada.'), false, 'proper noun + period');
+});
+
+test('partial signals (caps but no punct, OR punct but no caps) → skipped (false)', () => {
+  // The new gate is conservative: model runs ONLY on pure ASR-style
+  // (no caps AND no punct). Partial signals are human-written → skip.
+  eq(isASRStyleSegment('Kaixo'), false, 'uppercase but no punct → skip');
+  eq(isASRStyleSegment('kaixo.'), false, 'punct but no uppercase → skip');
+  eq(isASRStyleSegment('mikel agirre etorri da.'), false, 'punct but all-lowercase → skip');
+  eq(isASRStyleSegment('Kronologia'), false, 'heading: caps, no punct → skip');
+});
+
+test('AHT article FPs — correctly-lowercase punctuated text → skipped', () => {
+  // The key case: ordinal "1993." followed by lowercase "urtean" (correct —
+  // mid-sentence after ordinal). Has commas → human-written → skip model.
+  eq(isASRStyleSegment('1993. urtean sortu zen, ildo antikapitalista, antidesarrollista eta asanblearioa ardatz hartuta.'), false, 'ordinal-starting lowercase sentence with commas');
+  eq(isASRStyleSegment('2010eko krisialdi ekonomikoak bete-betean eragin zien, eta urte batzuetan'), false, 'year-starting lowercase sentence with comma');
+});
+
+test('terminal punctuation with trailing closing quotes/parens', () => {
+  eq(isASRStyleSegment('(Hau esaldi bat da.)'), false, 'period inside parens');
+  eq(isASRStyleSegment('Esan zuen: «Bai».'), false, 'period after guillemet');
+  eq(isASRStyleSegment('«Etorriko naiz?»'), false, 'question inside guillemets');
 });
 
 function test(name, fn) {

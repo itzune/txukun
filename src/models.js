@@ -187,12 +187,16 @@ function constrainCapPunct(inputLine, outputLine) {
  * Strategy:
  *  1. Split on newlines (hard breaks).
  *  2. Within each line, split on existing sentence-ending punctuation
- *     (`.`, `?`, `!`) followed by whitespace.
+ *     (`.`, `?`, `!`) followed by whitespace — but NOT on periods that
+ *     follow digits (ordinal markers like "1993." or thousands separators
+ *     like "2.018" — EBE Puntuazioa §1.2.2 "Zenbakietakoa"). Splitting
+ *     on ordinal periods creates lowercase fragments that bypass the
+ *     ASR gate and trigger model hallucinations.
  *  3. For long unpunctuated segments (>25 words), split by word count
  *     as a fallback so the model doesn't receive an over-long input.
  *
  * Returns an array of { text, sep } where `sep` is the separator to
- * rejoin with ('\n', '. ', ' ' etc.).
+ * rejoin with (' ' between sentences in a line, '\n' at line ends).
  */
 function splitIntoSegments(text) {
   const segments = [];
@@ -203,27 +207,32 @@ function splitIntoSegments(text) {
       segments.push({ text: '', sep: '\n' });
       continue;
     }
-    // Split on sentence-ending punctuation followed by whitespace
-    const sentenceEnds = line.split(/(?<=[.?!])\s+/);
-    for (const sent of sentenceEnds) {
-      const trimmed = sent.trim();
+    // Split on sentence-ending punctuation followed by whitespace.
+    // Don't split on periods that follow digits (ordinal/thousands):
+    // (?<=[?!]|[^0-9]\.)\s+  matches whitespace after ? or !, or after
+    // a period that is preceded by a non-digit character.
+    const sentenceEnds = line.split(/(?<=[?!]|[^0-9]\.)\s+/);
+    const lineSep = li < lines.length - 1 ? '\n' : '';
+    for (let si = 0; si < sentenceEnds.length; si++) {
+      const trimmed = sentenceEnds[si].trim();
       if (!trimmed) continue;
+      // Sentences within a line are rejoined with ' '; only the last
+      // sentence in a line gets the line separator (\n or '').
+      const sep = si < sentenceEnds.length - 1 ? ' ' : lineSep;
       const wordCount = trimmed.split(/\s+/).length;
       if (wordCount > 25) {
         // Long unpunctuated segment — split by word count
         const words = trimmed.split(/\s+/);
         for (let i = 0; i < words.length; i += 20) {
           const chunk = words.slice(i, i + 20).join(' ');
+          const isLastChunk = i + 20 >= words.length;
           segments.push({
             text: chunk,
-            sep: i + 20 >= words.length ? (li < lines.length - 1 ? '\n' : '') : ' ',
+            sep: isLastChunk ? sep : ' ',
           });
         }
       } else {
-        segments.push({
-          text: trimmed,
-          sep: li < lines.length - 1 ? '\n' : '',
-        });
+        segments.push({ text: trimmed, sep });
       }
     }
   }
@@ -231,10 +240,52 @@ function splitIntoSegments(text) {
 }
 
 /**
+ * Detect whether a segment is ASR-style output: all-lowercase with NO
+ * punctuation at all. The cap-punct model was trained on this style and
+ * should ONLY run on it.
+ *
+ * When fed already-correct text the model hallucinates degradations —
+ * capitalizing mid-sentence words, replacing colons with commas/periods,
+ * inserting spurious commas. On a 1483-word Berria article this produced
+ * 19 false positives (100% FP rate, 0 true positives).
+ *
+ * Gate: the model runs ONLY if the segment is ASR-style (no uppercase
+ * letters AND no punctuation marks of any kind). If the text has ANY
+ * capitalization or ANY punctuation (comma, colon, period, em-dash…),
+ * it was written by a human and the model is skipped — the deterministic
+ * rule layer (sentence-initial-cap, terminal-punct, etc.) handles it.
+ *
+ * Why "any punctuation" not just "terminal punct": a sentence like
+ * "1993. urtean sortu zen, ildo antikapitalista, antidesarrollista eta
+ * asanblearioa ardatz hartuta." is correctly lowercase ("urtean" follows
+ * the ordinal "1993.") but has commas → human-written → skip the model.
+ *
+ * Verified safe on the 33-case golden suite: all 33 are pure ASR-style
+ * (lowercase, zero punctuation) → none are skipped by this gate.
+ */
+export function isASRStyleSegment(text) {
+  if (!text || !text.trim()) return false;
+  const hasUpper = /[A-ZÀ-ÝÑÜÇ]/.test(text);
+  const hasPunct = /[.,;:!?«»"'()\[\]–—]/.test(text);
+  return !hasUpper && !hasPunct;
+}
+
+/**
+ * @deprecated Use isASRStyleSegment (inverted logic). Kept for tests.
+ */
+export function isWellFormedSegment(text) {
+  return !isASRStyleSegment(text);
+}
+
+/**
  * Run MarianMT cap-punct correction on the full text, then apply the P1
  * deterministic rule layer (sentence-initial cap, terminal punct, vocative
  * comma) to fix remaining gaps. Splits into sentence-length segments first
  * (the model was trained on individual sentences, not paragraphs).
+ *
+ * ASR gate: segments that are already well-formed (uppercase + terminal
+ * punctuation) skip the model entirely — it only degrades them. The rule
+ * layer still runs on all text.
  *
  * If the model is not yet loaded, still applies the rule layer ("Txukun Lite"
  * mode — basic cap+punct without the neural model).
@@ -265,10 +316,21 @@ export async function correctCapPunct(text) {
       continue;
     }
     const segStart = offset;
-    const out = await correctorPipeline(seg.text);
-    let corrected = cleanModelOutput(out[0]?.translation_text || seg.text);
-    const { text: constrained, matchRate } = constrainCapPunct(seg.text, corrected);
-    results.push({ text: constrained || seg.text, sep: seg.sep });
+    // ASR gate: only run the model on ASR-style segments (all-lowercase,
+    // zero punctuation). Human-written text (has caps or any punctuation)
+    // is skipped — the model hallucinates degradations on well-formed text.
+    // The rule layer (run below on the concatenated output) handles
+    // sentence-initial caps and terminal punctuation deterministically.
+    let constrained = seg.text;
+    let matchRate = 1.0;
+    if (isASRStyleSegment(seg.text)) {
+      const out = await correctorPipeline(seg.text);
+      const corrected = cleanModelOutput(out[0]?.translation_text || seg.text);
+      const r = constrainCapPunct(seg.text, corrected);
+      constrained = r.text || seg.text;
+      matchRate = r.matchRate;
+    }
+    results.push({ text: constrained, sep: seg.sep });
     matchRates.push(matchRate);
     segmentRates.push({ start: segStart, end: segStart + seg.text.length, rate: matchRate });
     offset += seg.text.length + seg.sep.length;

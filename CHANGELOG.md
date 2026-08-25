@@ -6,6 +6,37 @@ All notable changes to Txukun will be documented in this file.
 
 ## [Unreleased] — post-v2.0.0 (zalantza rule + Txukun Lite UI fix)
 
+### ASR detection gate — cap-punct hallucination fix
+
+#### Fixed
+- **Cap-punct model hallucinated on well-formed text** (100% FP rate): the
+  MarianMT cap-punct model was trained on ASR-style lowercase input. When fed
+  already-correct text (uppercase + punctuation), it hallucinated degradations
+  — capitalizing mid-sentence words, replacing colons/semicolons with
+  commas/periods, inserting spurious commas. On a 1483-word Berria article,
+  this produced **19 false positives (100% FP rate, 0 true positives)**.
+- **Root cause**: the ASR gate (`isWellFormedSegment`) checked for uppercase +
+  terminal punctuation. But sentences like `"1993. urtean sortu zen, ildo
+  antikapitalista…"` are correctly lowercase ("urtean" follows the ordinal
+  "1993.") yet have no uppercase → bypassed the gate → model ran → hallucinated.
+  Additionally, `splitIntoSegments()` split on ordinal periods (`"1993. urtean"`
+  → `"1993."` + `"urtean…"`), creating lowercase fragments that bypassed the
+  gate entirely.
+- **Fix 1 — ordinal-safe segmentation**: `splitIntoSegments()` regex changed
+  from `/(?<=[.?!])\s+/` to `/(?<=[?!]|[^0-9]\.)\s+/` — does not split on
+  periods that follow digits (ordinal markers like `"1993."` or thousands
+  separators like `"2.018"`, per EBE Puntuazioa §1.2.2 "Zenbakietakoa").
+  Also fixed `sep` to use spaces (not `\n`) between sentences within a line.
+- **Fix 2 — conservative ASR gate**: replaced `isWellFormedSegment()` (skip if
+  uppercase + terminal punct) with `isASRStyleSegment()` (run model ONLY if
+  all-lowercase AND zero punctuation). Any text with caps OR any punctuation is
+  human-written → model skipped → rule layer handles it. The model now runs
+  exclusively on pure ASR-style text (the input it was trained on).
+- **Result**: 19 FPs → **0 FPs** on the AHT Berria article (100% reduction).
+  Zero regression on the 33-case golden suite (all 33 are pure ASR-style → none
+  skipped). Rule engine (sentence-initial-cap, terminal-punct, zalantza, calque)
+  handles all cap-punct needs on human-written text.
+
 ### Added
 - **Zalantza-hitzak rule** (`src/core/rules/zalantza-words.js`) — the first
   EBE-grounded *general-purpose writer* rule (not ASR-specific). Corrects

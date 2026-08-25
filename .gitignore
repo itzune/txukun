@@ -12,3 +12,7 @@ test-results/
 
 # Cap-punct eval: per-run result snapshots (keep BASELINE.md + latest, ignore the rest)
 tests/cap-punct/results-*.json
+
+# Temp test scripts
+_*.mjs
+_*.sh
