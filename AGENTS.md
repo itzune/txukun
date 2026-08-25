@@ -28,10 +28,19 @@ Txukun is a browser-based Basque text cleaning tool that restores capitalization
 |---|---|
 | `index.html` | Single-page app (all HTML + inline CSS) |
 | `src/main.js` | Entry point: model loading, correction logic, i18n, keyboard shortcuts |
+| `src/models.js` | MarianMT pipeline + P1 rule engine integration (cap-punct correction) |
+| `src/core/types.js` | Lint + Suggestion + LintKind data model (Harper-inspired) |
+| `src/core/document.js` | Tokenizer + Document (span-based token model, iterSentences) |
+| `src/core/engine.js` | Rule engine: runRules() with iterative apply |
+| `src/core/rules/` | EBE-grounded rules: sentence-initial-cap, terminal-punct, vocative-comma |
+| `src/core/clean-output.js` | Pure model output cleaning (shared by production + eval) |
 | `src/i18n.js` | Basque/English translations with dot-path resolver |
 | `src/ui-bindings.js` | DOM references, status indicator, progress bar, buttons, toast system |
 | `src/ui-examples.js` | Basque example sentences as clickable chips |
 | `src/ui-toast.js` | Toast notification with type-specific styling |
+| `tests/cap-punct/` | Golden-case eval harness (EBE-grounded, RAW/CONSTRAINED/RULED metrics) |
+| `tests/core/` | Rule engine unit tests (instant, no model needed) |
+| `docs/ebe-reference/` | EBE rule reference extracts (punctuation, calques, confusables) |
 | `vite.config.js` | Vite config with base path `/txukun/` |
 | `package.json` | Dependencies and scripts |
 | `CHANGELOG.md` | Release changelog |
@@ -61,14 +70,15 @@ const correctorPipeline = await pipeline(
   'itzune/txukun-cap-punct-eu',
   {
     device: 'wasm',
-    dtype: 'fp16',       // float16 quantized model
+    dtype: 'q8',        // int8 quantized model (lossless vs fp32 — see tests/cap-punct/BASELINE.md)
     subfolder: '',        // files are in repo root, not onnx/ subfolder
   }
 );
 ```
 
-- Model files: `encoder_model_fp16.onnx` (68 MB) + `decoder_model_merged_fp16.onnx` (81 MB)
-- Files must be named with `_fp16` suffix for Transformers.js auto-detection
+- Model files: `encoder_model_quantized.onnx` (int8, shipped) + `encoder_model.onnx` (fp32). Hub has NO `_fp16` files.
+- Transformers.js dtype mapping: `'q8'` → `_quantized.onnx` (int8, what `src/models.js` uses), `'fp32'` → `.onnx` (full precision). `'fp16'` 404s (no such files on Hub).
+- q8 and fp32 produce identical cap-punct accuracy (verified 2026-08-25, 33-case golden suite)
 - `subfolder: ''` is critical — TF.js defaults to `onnx/` subfolder
 
 ## i18n

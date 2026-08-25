@@ -194,9 +194,12 @@ npm run deploy
 ```
 txukun/
 ├── index.html              # Main page (Itzune design system)
-├── public/                 # Static assets (CNAME)
+├── public/                 # Static assets (CNAME, hunspell.wasm, dicts)
 ├── src/
 │   ├── main.js             # Entry point, model loading, correction pipeline, constrainCapPunct()
+│   ├── models.js           # MarianMT cap-punct pipeline + shared model state
+│   ├── core/               # Pure, dependency-free helpers (importable in Node + browser)
+│   │   └── clean-output.js #   cleanModelOutput() — special-token cleanup (P0.3)
 │   ├── spell.js            # Spell checking, candidate generation (Tier 1), BERTeus integration
 │   ├── spell-worker.js     # WASM Hunspell worker (dictionary lookup + Levenshtein)
 │   ├── bert-rerank.js      # BERTeus neural re-ranking (Tier 2, lazy-loaded, int4 ONNX)
@@ -205,6 +208,12 @@ txukun/
 │   ├── ui-bindings.js      # DOM bindings, buttons, status
 │   ├── ui-examples.js      # Example sentences
 │   └── ui-toast.js         # Toast notifications
+├── docs/                   # Reference & historical docs
+│   ├── ebe-reference/      #   EBE rule source texts (Euskaltzaindia)
+│   └── hunspell-history/   #   Archived Hunspell WASM research (see ISSIE_LOG.md for current state)
+├── tests/
+│   ├── cap-punct/          # Cap-punct golden-case suite + eval harness (P0.2)
+│   └── gec-benchmark/      # Spelling/grammar eval harness
 ├── .github/
 │   └── workflows/
 │       └── deploy.yml      # GitHub Pages deploy

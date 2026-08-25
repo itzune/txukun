@@ -1,0 +1,433 @@
+                                                                                    2
+                                                                     Puntuazio-markak
+
+
+
+
+1. Puntua [.]
+     1. Perpausaren zein paragrafoaren bukaera adierazten du puntuak. Etena
+        adierazten du. Esaldi bat hurrengotik bereizteko marka da. Aurreko
+        esaldi(ar)ekin ideia-segida estua baldin badu, puntua jartzen da. Ideien
+        progresioan aurrerapausoa badago, puntu eta bereiz1 jartzen da. Joskerak
+        eskatzen duen bitartekoa da.
+     2. Badira ortotipografiak araututako puntuak ere:
+        2.1. Laburdurena: adib. (adibidez), or. (orrialdea/-ak), etab. (eta abar), etc. (et caetera
+              [lat.] = eta abar), G.B. (Goian bego)… (➛ laburdurak). Ez dute eramaten,
+              ordea, ez sinboloek oro har —cm (zentimetro), km (kilometro), h (ordu), es
+              (gaztelania), W (mendebaldea)… (➛ sinboloak (nazioartekoak))—, eta ez
+              siglek ere: EAE, EGA, AEB, NATO, CD… (➛ siglak)
+        2.2. Zenbakietakoa:
+              • Digituz idaztean, -garren atzizkiaren ordez jartzen dena: (zazpigarrena)
+                 7.a. (➛ zenbaki ordinalak)
+              • Izen berezi batzuek dutena: Atano XII.a. (➛ zenbaki ordinalak)
+              • Milatik gorako zenbakiek daramatena: 2.018 ogi ekarri ditu (data-urtea
+                 salbuespena da). (➛ zenbaki kardinalak (ortotipografia))
+
+
+
+1 Esaldia esanahi osoa duen testu-unitatea da berez, eta izan daiteke:
+  • aditzik gabea: Bai edo Arratsalde on! edo Zorionak, Amaia!
+  • perpaus bakuna (aditz bakarra): Kalera joango gara. Aitak amari gona gorria ekarri zion.
+  • perpaus elkartua (aditz bat baino gehiago):
+      - juntaduraz
+            juntagailuz: Egia aitortu nion, baina ez zidan sinetsi.
+            alborakuntzaz: Ezer ez daki; isilik dago. Etorri da, jan du, joan da.
+      - menderakuntzaz: Dendariak esan dit laster etorriko dela.
+
+                                                                                               467
+        2.3. Parentesiak, marrak edo komatxoak erabili badira, haien ondoren jarri
+             behar da puntua: 2.018 ogi ekarri ditu (data-urtea salbuespena da). / (*data-urtea
+             salbuespena da.)
+        2.4. Bukaeran punturik gabe idazten dira, oro har, liburuetako izenburu,
+             goiburu, kapitulu, atal, pasarte eta gisakoak. Ikus, esaterako, kapitulu
+             honen izenburua bera: PUNTUAZIO-MARKAK
+
+
+2. Koma [,]
+Puntuazioak jasotzen duen etenik laburrena adierazteko ikurra da koma. Bera da
+perpaus barneko puntuazio nagusia. Komaz bereizi behar d(ir)a:
+   1. Esaldian hiru osagai edo gehiago elkartzen direnean:
+               Berdin zait solidoak, likidoak ala gasak diren.
+   2. Enumerazio bateko osagaiak:
+               Hamar, hamabi, hogei… ez dakit zenbat.
+   3. Bokatiboa (➛ bokatiboa):
+               Kaixo, Mikel! Kaixo, Mikel, zer moduz? Entzun, adiskideok, azken berriak.
+   4. Aposizioa (➛ glosarioa):
+               Imanol, irakasle betaurrekoduna, oso txintxoa da.
+   5. Esaldiaren osagai diren tartekiak (➛ glosarioa):
+               Gizakiak, bipedoa izanik, gehienez ere 40 km/h-ko abiadura har dezake.
+               Bazekien, baina ez zitzaion axola, zer ondorio zekarren horrek.
+   6. Mintzagaia (➛ glosarioa; ➛ hitzen ordena)
+               Etxe horretan, gu bizi gara. Atzo, zer egin zenuen? Zuri, ez nizuke halakorik egingo.
+   7. Lokailuak eta antolatzaileak (➛ glosarioa): ordea, ostera, aldiz, dena dela, beraz,
+      ondorioz, antza denez, izan ere, bestela esanda, adibidez, besteak beste, nire
+      iritziz, ezer baino lehen, nolanahi ere eta abar.
+      • bai tarteki gisa doazenean (bi komarekin [esaldi bakarra da orduan]):
+               Horixe da, izan ere, esan nahi nizuna.
+               Helburua lortzeko urratsak, aldiz, zailagoak izan ziren.
+               Hura, adibidez, hara joan da.
+      • bai esaldiaren hasieran doanean:
+               Izan ere, horixe da esan nahi nizuna.
+               Beraz, biharko egina egon beharko du.
+      • bai bi perpausen lotura egitean:
+               Hainbat kontu aipatu ditu; adibidez, puntuazioa (aipatu du).
+               Autoa hemen dauka; beraz, ez da urruti ibiliko.
+               Itsasoan igeri dabiltzan batzuk ez dira arrainak; besteak beste, baleak eta izurdeak.
+
+468
+8. Koma jarri ohi da juntagailuaren aurretik (➛ glosarioa), baldin juntaduran
+    doazen osagaiak perpausak badira:
+             Garaiz eskatu nion, baina ez zidan ekarri.
+             Aita menditik etorri da, eta arreba hondartzara joan da.
+             Han agertu ziren bertsolariak, eta entzuleak txaloka hasi ziren.
+9. Koma artean jarri ohi da, esaldi bat argitu edo osatzeko, beste bat tarteki gisa
+    —ia beti perpaus txertatu gisa— sartzen denean:
+             Hori, nire lagun batek esaten duenez, lelokeria galanta da.
+             Atzo, aitak nahi izan zuelako, mendira joan behar izan genuen.
+10. Koma jarri ohi da mendeko perpausa nagusiaren aurretik jartzen denean
+    (hura galdegaia izan ezean (➛ glosarioa; ➛ hitzen ordena)):
+             Zure lana arintzeko, beste tresneria hau erabiliko dugu. (galdegaia: ZER)
+             Zure lana arintzeko erabiliko dugu beste tresneria hau. (galdegaia: ZERTARAKO)
+11. Baldin eta adizlagun-funtzioko perpaus txertatuak perpaus nagusiaren atzetik
+    badatoz, tentuz neurtu behar da koma non jarri, esanahia zeharo alda baitaiteke:
+             [Pozik nago garaiz etorri delako] Pozik nago gaur, garaiz etorri delako ≠ Pozik nago, gaur
+                  garaiz etorri delako.
+             [Andereñoa haserretu zaio(,) denen aurrean izozkia jan duelako] Andereñoa haserretu zaio,
+                  klasean denen aurrean izozkia jan duelako ≠ Andereñoa haserretu zaio klasean(,) denen
+                  aurrean izozkia jan duelako).
+12. Irizpide hedatua da koma jartzea aditzaren elipsia adierazteko.
+             Zuek asko jokatu duzue; haiek, batere ez.
+    Dena dela, titulu eta izenburuetan (eta infografia eta grafikoetan):
+    • Aditz-elipsirik gabekoa bada, ez da komarik jartzen.
+             Gizona bere bakardadean. Estropadak iruditan.
+    • Esaldi bateko aditz-elipsia egiten bada, galdegai-mintzagai jokoa hartu
+       behar da kontuan: ez da komarik jarri ohi galdegaia bada elipsiaren aurreko
+       osagaia (Euskal Herria helburu (< Euskal Herria [dugu] helburu)); koma jarri ohi da
+       hasierakoa galdegaia ez baizik mintzagaia bada (SOS Arrazakeria, erne (< SOS
+       Arrazakeria erne dabil; non erne den galdegaia eta SOS Arrazakeria, mintzagaia].
+       (➛ hitzen ordena)
+13. Koma jarri ohi da <bai... bai…>, <ez… ez…>, <edo… edo…> eta gisako egitura
+    banakarietan (➛ alborakuntzazko juntadura (bai… bai, nahiz… nahiz eta gisakoak)):
+             Horrek zoragarri egiten du bai euskaraz, bai frantsesez, bai ingelesez.
+             Ez jateko, ez edateko, ez deus esateko zabaldu du ahoa.
+    Hala ere, zenbait egitura lotuk etenik gabeko segida eskatzen du: Ez hotz ez bero
+    utzi ninduen.
+14. Koma jartzen da toki-izenaren ondoren, data ematean (➛ data nola eman):
+             Zumaian, 2018ko otsailaren 14an.
+
+                                                                                                  469
+      15. Koma jarri ohi da korrelazioa adierazten duten atsotitz edo errefrauetan:
+                  Eguzkia nora, zapiak hara.
+                  Non gogoa, han zangoa.
+                  Zer ikusi, hura ikasi.
+                  Non fida, han gal.
+      16. Ortotipografiak agindutako koma: Koma jartzen da zenbaki dezimaldunetan
+          zati osoaren eta zati dezimalaren artean (➛ zenbaki kardinalak): 2,75.
+
+
+Komarik EZ da jartzen:
+• Subjektuaren eta aditzaren artean (tartean tartekirik-edo ez badago): Euskaldunek asko
+  maite dute mendia (*Euskaldunek, asko […]).
+• Komaz bereizitako esaldi-atal baten barruan: Nire ustez gaizki jokatu duen arren, ez zait
+  iruditzen zigorrik jarri behar zaionik (*Nire ustez, gaizki jokatu duen arren, ez zait iruditzen […].
+• Aditzaren eta perpaus osagarriaren artean: Hark esan du bihar goizean goiz etorriko dela lanera
+  (*Hark esan du, bihar goizean goiz etorriko dela lanera).
+• Mezuen eta gutunen hasierakoaren amaieran. Gure inguruko ohituran, bi puntu
+  jarri ohi dira: Kaixo, Mikel: / Guraso maiteok: (▼Guraso maiteok,). (Ikus bi puntuak saileko 7.
+  puntuko oharra).
+
+
+3. Puntu eta koma [;]
+Komarena baino eten luzeagoa adierazten du, baina puntuarena baino ahulagoa.
+Alborakuntzaz (➛ glosarioa) elkartzen ditu esaldiak. Eginkizun hauetan erabiltzen da:
+1. Komek bereizitako osagaiak multzotan jartzeko, koma hutsez eginez gero anbiguo
+   geratuko bailirateke:
+                  liburuak, handi nahiz txiki; diskoak, binilozkoak zein digitalak; haurrentzako jokoak eta
+                       bestelako jostailuak
+                  Atzo lapurrek gauza asko eraman zituzten etxetik: bi erloju, Suitzatik izebak ekarriak; 50 euro,
+                      amak mahai gainean zeuzkanak; zilarrezko kaxa bat, nire ahizpak oso maite zuena; oso
+                      maite genuen irrati zahar bat, amamaren oroigarri genuena.
+2. Lokailu (➛ glosarioa) eta antolatzaile (➛ glosarioa) askok beharrezkoa duten testu-
+   lotura egoki bideratzeko, koma hutsezko etena ahulegia gertatzen baita bestela
+   (ikus komaren 7. puntua):
+                  Ni zeharo bat nator; zu, ostera, erabat aurka jarri zara.
+                  Saldu egin du; izan ere, ez zion ezertarako balio.
+                  Ibil zaitez kontuz; bestela, erori egingo zara.
+3. Perpausek esanahi-lotura estua dutenean, puntuaren ordez erabiltzeko. Ikus albo-
+   rakuntzaz 465. orrialdeko oin-oharrean esaten dena.
+
+470
+4. Perpausen lotura semantikoa mendekotasunekoa denean (‘kausa/ondorio’ modura
+   ulertzen denean, alegia), puntu eta komaz zein bi puntuez eman daiteke esaldia:
+              Zoazte etxera(;/:) hemen alferrik zaudete orain.
+              Zuregatik egin du(;/:) ezin diozu ezer esan.
+              Ezer ez daki(;/:) isilik dago.
+              Euria ari zuen(;/:) etxean geratu ginen.
+              Garestia da(;/:) ez dut erosiko.
+5. Estilo-aukera ere bada puntu eta koma:
+   a) Puntuaren eginkizun bera duenez (esaldiak bereiztea/elkartzea), perpausek
+       esanahi-lotura estua dutenean, haren funtzioa bete dezake:
+              Esango banio zer egin dudan, ez lidake sinetsiko; sinetsiko balit, erotzat hartuko ninduke.
+                   ([…]. Sinetsiko […]).
+              Telefono-deia jaso bezain pronto, haren bila irten zen; aurkitu zuenean, artean bizirik
+                   zegoen. ([…]. Aurkitu […]).
+              Bigarren etapa 1925eko abenduaren eta 1927. urtearen artean izan zen(./;) F(f)ase hartan
+                   lortu zuen gailurra diktadoreak.
+   b) Koma soilarena ere bete dezake egitura paraleloa duten esaldietan, baldin ez
+       badu nahasbiderik eragiten:
+              Atomoa zen materiaren azken osagaia(;/,) atomoa zen zatitu ezin zitekeen azken zatia.
+
+
+4. Bi puntuak [:]
+Bi puntuek erlazio kataforiko bat iragartzen dute (➛ glosarioa); alegia, gero datorren
+elementu bati egiten diote erreferentzia, edo/eta esaldia osatzera datorren osagaiaren
+seinale dira nolabait.
+Aurreko hitzaren segidan, tartean hutsunerik utzi gabe, eta ondoren hutsunea utziz
+idazten dira. Gaztelaniaz ere hori da ohitura, baina frantsesez hutsune bat uzten da
+aurreko hitzaren eta bi puntuen artean.
+
+Eginkizun hauetan erabiltzen da:
+1. Norbaitek esana hitzez hitz jasotzen denean:
+              Mikelek orduan oihuka: «Gora Euskadi askatuta!».
+              Urkullu: «Euskadik Europan du etorkizuna».
+2. Izenburuen zehaztapen edo argibide gehigarriak eman nahi direnean. Adib.:
+              Portugal. Biztanleak: portugaldarrak. Hedadura: 92.212 km2. Hiriburua: Lisboa (lisboar)…
+3. Testuetako adibideei sarrera emateko. Erreparatu, esaterako, sail honetan bertan
+    nola eman diren adibideak.
+4. Lotura sintaktikorik ez baina bai semantikoa duten bi esaldiren artean, lehena
+    bigarrenaren azalpena denean:
+              Egun hauetan hotz handia egiten du: horra denon kexa.
+
+                                                                                                    471
+                 Hirugarren proba dator orain: zailena eta gogorrena.
+                 Badute elkarren antzik: biak, lapurrak.
+                 (Ikus puntu eta koma saileko 4. puntua).
+5. Erlazio kataforikoa markatzeko, elementu aurreratzaileren bat duten perpausen
+   ondoren (molde oso erabilia, adibidez, definizioetan):
+                 Berriro arazorik ez izateko, hau erabaki da: bulegoa 18:00etan ixtea.
+                 Honela egingo dugu: zuk erosketak egingo dituzu, eta nik afaria prestatuko dut.
+                 Ziurtagiri bat hauxe da: idatzizko aitorpen ofizial bat, bertan dioena egia dela adierazten
+                      duena.
+6. Bana-banakako zerrendatze bati sarrera ematean:
+                 Mendi asko igo zituzten: Gorbeia, Anboto, Aizkorri, Orhi eta beste hainbat.
+7. Gutun- eta mezu-hasieretan:
+                 Kaixo, Mikel:
+                 Guraso maiteok:
+
+      Oharra: Nolanahi ere, Euskaltzaindiak ez dauka erabakirik aribide honetaz. Horko hori
+      Hegoaldeko erabilera estandarra da; Iparraldean —frantsesez eta ingelesez bezala— koma
+      erabiltzen dute funtzio horretan. (Guraso maiteok,).
+
+8. Aurreko esaldietan esana biltzen duen azken esaldi batez amaitzen denean:
+                 Batzuek hamar behar zituztela, beste batzuek hamabi, hogei esaten zuenik ere bazen:
+                     guztiak ziren zerbaiten beharrean.
+9. Badira ortotipografiak araututako bi puntuak ere:
+      • Orduak eta kiroletako markak ematekoak: Goizeko 07:15ean jaikitzen naiz. Maratoia
+        2:08:33an egin du.
+      • Ikus hemen nola egiten den bi puntuen ondorengo idazkera. (➛ bi puntuen
+        ondorengo idazkera)
+
+
+
+5. Etenpuntuak […]
+Hiru puntu dira beti. Erabilera nagusiak:
+1. Esaldia bukatu gabe utzi dela adieraztea. Hiru kasu hauetan sarrienik:
+      • Eta abar esapidearen ordez.
+      • Esanaren ondoren datorrena jakintzat ematen bide delako.
+      • Esana bukatu gabe utzi nahi dela adierazteko, testua adierazgarriago izan dadin.
+        Hala baliatzen da, esaterako, zera iradoki nahi denean: zalantza, lotsa, intriga,
+        ironia, beldurra… Ahozko moldean intonazioaren tonu-joko bere-berea ematen
+        zaio horrelakoetan: Hartu kontuan harako hura: nolako egurra (↗)…
+
+472
+2. Hitzez hitzeko aipuetan zati edo pasarte bat isildu egin dela adieraztea. Hiru
+   puntuak parentesi artean doaz orduan. Berdin dio zein parentesi-mota den,
+   karratua […] zein normala (…):
+                Honela dio Axularrek: «Eta bertze guztien artetik, hasi zitzaizkidan niri […] nik behar nituela
+                   egiteko hartan eskuak sartu».
+
+
+6. Galdera-marka [?] eta harridura-marka [!]
+Galde-perpausetan eta harridurazkoetan erabiltzen dira (hedaduraz, baita agindu,
+kexu eta horrelakoetan ere).
+1. Normalean perpausaren bukaeran jartzen dira. Hala denean, ez dute bukaerako
+   punturik onartzen (markak berak baitu puntua): Nola ez dakizula? Bai ipuin politak zureak!
+    Gertatzen da, ordea, perpausaren barruan egokitzea ere. Hala denean, koma,
+    puntu eta koma eta bi puntuak erabilgarriak dira (➛ galdeikur, galdemarka, galde(ra)-zeinu
+    > galdera-marka):
+                Astakilo!, deitzen zidaten lagunek.
+                Nora zoaz?, galdetu zidan amak.
+                Ez dakizula?; atzo kontatu nizun eta!: non ote duzu zuk burua!?
+2. Harriduraz eginiko galdera ere izan liteke inoiz. Hala denean, bi markak agertuko
+   dira:
+                Ez zenekiela azterketa noiz zen!?
+
+
+7. Marra luzeak [—] eta parentesiak ( ) / [ ]
+
+(Oharra: Ohituren arabera, argitaletxe batzuek, marra luzeak erabili ordez, marra normalak
+erabiltzen dituzte: [–]. Obra honetan, hiru marra-tipo bereizten dira berariaz: marratxoa [-],
+marra (normala) [–] eta marra luzea [—]. Haietaz gain, hala ere, beste bi hauek ere erabili dira:
+zehar-marra [/] eta beheko marra [_]).
+
+1. Marra luzeak zein parentesiak erabiltzen dira esaldian aparteko zerbait adierazi
+   nahi denean (esaldi izan zein ez). Tarteki-lana (➛ glosarioa) egiten dute, alegia:
+                Zor zaharra (esaerak hala dio) zor txarra da.
+                Zor zaharra —esaerak hala dio— zor txarra da.
+
+                Robert Lowell poetak kontzientzia-arrazoiak alegatu zituen II. Mundu Gerrara ez joateko (eta
+                    kartzelara joan zen aldi batez), eta Vietnamgo gerraren kontra idatzi zuen.
+                Robert Lowell poetak kontzientzia-arrazoiak alegatu zituen II. Mundu Gerrara ez joateko
+                    —eta kartzelara joan zen aldi batez—, eta Vietnamgo gerraren kontra idatzi zuen.
+2. Marren eta parentesien arteko aldea ez dago guztiz finkaturik. Honako hauetan,
+   parentesiak erabiltzen dira normalean:
+
+                                                                                                          473
+      • Daturen bat tartekatu nahi denean: 3.700 €-ko isuna jarri diote (625.000 pezeta / 25.000
+        libera).
+      • Aipamen bat egin ondoren, autorearen eta obraren izenak adierazteko: “…”.
+     (Axular, Gero).
+   • Antzerki-testuetan akotazioak egiteko.
+3. Parentesi arteko hiru puntuek, (…) / […], testu zati bat isildu/kendu dela
+   adierazten dute. Parentesi arteko harridura-markak (!), berriz, adierazi nahi du
+   parentesiaren aurretik dagoena harrigarria gertatzen zaiola idazleari. Parentesi
+   arteko galdera-markak (?), ostera, esan berri duenari buruzko zalantza agerrarazten
+   du (gramatika-kontuetan, hala ere, beste esanahi bat du: arauz edo gramatikaz
+   zalantzakoa den forma dela). Eta, azkenik, (sic) edo [sic] hitzak, testuan esandakoa
+   hitzez hitz hartu dela adierazten du.
+4. Azken urteotan, gero eta gehiago erabiltzen dira parentesi karratuak. Aurreko
+   puntuan adierazitakoaz gainera (alegia, zerbait falta edo kendu dela aditzera
+   emateaz gainera), beste egiteko bereago hauek ere badituzte:
+   • Parentesi normalen barruan beste parentesi bat zedarritzea: Gioconda (Leonardo da
+     Vincik margotua [1452-1519]) autorearen margolan garrantzitsuena da.
+   • Fonetika-fonologian, mintzaira-soinuak —alofonoak— irudikatzea: ez zakiat
+     [etzakiat].
+   Zeinu eta molde batzuk irudikatu edo kokatzea: [;], [, eta]…
+
+
+8. Elkarrizketa-marra [—]
+Marra bakarra erabiltzen da elkarrizketetan, solaskide bakoitzaren jardunaren hasiera
+markatzeko; baita zuzen-zuzeneko hitzak eta narratzailearenak bereizteko ere:
+             —Institututik pasatu al zara gaurkoan? —galdetu nion.
+
+
+9. Komatxoak / aipu-markak [« »; “ ”; ‘ ’]
+Aukerakoa da —estilo-aukera— molde bateko zein besteko marka-pareak erabiltzea.
+Nabarmentze-funtzioa dute helburu.
+1. Hitzez hitzeko aipuak (horrexegatik batzuek aipu-markak deitzea komatxoei) edo
+   barne-hizketa markatzeko erabiltzen dira.
+              Honela dio Mitxelenak: «Inoiz batera bagaitez, bada, huskeriak baino zerbait gehiago
+                   galduko du gure hizkuntzak».
+              “Ez zioat inori esango”, esan zion bere buruari.
+2. Badute funtzio ortotipografikoa ere:
+      2.1. Ezizena izenarekin batera idazten denean, hura nabarmentzea: Nikolas
+            Ormaetxea “Orixe” (zilegi da Orixe etzanean ere, komatxorik gabe (➛ letra
+            etzana noiz)).
+
+474
+        2.2. Atzerriko hizkuntza bateko hitzen transkripzio-moldea ematea: Greko
+             modernoan «Ne» esaten dute «bai» adierazteko.
+        2.3. Norberaren hizkuntzako argitasunak edo fonetismoak ematea. Baita
+             iruzkinetako aipu labur eta zehatzak egitea ere: Jauzia «salto» da.
+        2.4. Hizkuntza arrunteko elementuren baten ordez konnotazio edo esanahi
+             jakina duen beste bat adieraztea; adibidez, ironia, barrea, samina edo
+             besterik: Lapurrak milioi bat lekuz «aldatu» zuen: bankutik bere etxera.
+
+        Oharra: Gaur egun, moldezko edo inprimatzeko letraz idatzitako testuetan, letra italiko
+        edo etzana (ikasliburuetan baita lodia ere zenbaitetan) ari da ordezkatzen komatxoen
+        erabilera gehienak.
+    3. Eskuz idazten dugunean, aldizkari, erakunde, egunkari, liburu, marka-izen eta
+       abarren aipamena egiteko: «Berria»k euskara bakarrik erabiltzen du. Inprimatzeko letraz
+       ari bagara, letra etzanean joan ohi dira halakoak: Berriak euskara bakarrik erabiltzen du.
+        (➛ letra etzana noiz)
+
+
+
+10. Marratxoa [-]
+Puntuazioari ez baizik ortotipografiari dagokio marratxoaren kontua, baina egoki da
+hemen ere aipatzea. Erabilera hauek ditu:
+1. Lerro-etenak markatzea. Banatze-irizpidea ez da etimologikoa (*gizon-aren, *udal-etxe,
+   *zakurr-arentzat…), silabikoa baizik (gi-zo-na-ren, u-da-le-txe-a-ren…). (13. araua)
+    (➛ lerro-bukaerak nola eten)
+2. Zenbait hitz elkartu lotzea (➛ hitz elkartuen osaera eta idazkera).
+3. Aukeran, izen berezi baten eta kasu-markaren arteko muga edo letra etzana
+   (nahiz lodia) eta kakotxak eta gisako bitartekoen muga argitzea. (➛ letra etzana noiz;
+    ➛ izen bereziak: adierazpen izendatzaileen deklinabidea (leku-izen edo pertsona-izen ez diren
+    izen bereziak))
+4. ETA eta EDO enklitikoak lotzea, aukeran: Zuen liburuak-edo zeuden hor bazterrean botata.
+    (➛ eta)
+5. Marratxoz lotzen dira bi herrik edo gehiagok administrazio-elkarte bat osatzen
+   dutenean: Lasarte-Oria, Gamiz-Fika, Labetze-Bizkai, Maule-Lextarre... (➛ leku-izenak,
+    eta zehar-marra ala marratxoa)
+6. Hizkuntzalaritzan, atzizki, aurrizki, menderagailu eta gisakoak lotuta erabiltzen
+   direla adieraztea: -ekiko atzizkia, -(e)lako menderagailua…
+7. Marratxorik ez da erabiltzen: ez kasu-markak lotzeko —(hitz eta izen berezi
+   ezagunekin behintzat— (*Asteasu-ra), ez siglekin (*EGA-ko), ez zenbakiekin (*2-tik
+   3-ra)… (➛ marratxoaren erabilera kasu-marken aurretik)
+8. Notazio matematikoan, marratxoa [-] ez da egokia minus edo ken adierazteko;
+   haren ordez marra [–] zeinua idatzi ohi da. Zeinuaren eta zenbakiaren artean ez
+
+                                                                                             475
+      da zuriunerik jartzen minus denean: (*-5) −5; ken denean, berriz, zuriunea utzi
+      behar da: 5 – 2 = 3.
+
+
+11. Apostrofoa [’]
+Puntuazioari ez baizik ortotipografiari dagokio apostrofoaren kontua, baina egoki da
+hemen aipatzea. Erabilera hauek ditu:
+1. Egokia da apostrofoa erabiltzea agur t’erdi esapidea adierazteko (➛ agur t’erdi). Adiera
+   horretatik kanpo —hurrengo puntuan adierazten den kasuan salbu—, ez da
+   erabili behar. Orduak ematean, Euskaltzaindiak oso-osorik ematea du hobetsia:
+   *sei t’erdietan / sei eta erdietan (➛ orduak nola esan). Gainerako kasuetan ere, halaxe ageri da
+   Euskaltzaindiaren Hiztegian: lau eta erdiko txapelketa; kilometro eta erdi; lau eta erdiko Arabako
+   irekia…
+2. Egokia da bertsolarien ahozko jarduneko —eta oro har ahozko moldeko—
+   kontrakzio eta transkripzioak adierazteko. Adib.: Proportzio bat izandu nuen / erdi
+   zahartuta gero’re (= gero ere).
+
+
+12. Zehar-marra edo barra etzana [/]
+Puntuazioari ez baizik ortotipografiari dagokio zehar-marra edo barra etzanaren
+kontua, baina egoki da hemen aipatzea. Eginkizun hauetarako erabiltzen da:
+1. Bertso-lerroak, olerkiak edo abestien letrak bereizteko, haiek lerro berean idazten
+   direnean. Hutsunea uzten da zehar-marraren bi aldeetan:
+                Izotz ondoko eguzki, / neguaren parre: / olerkariak noizpait / hiri gorazarre.
+2. Hizkuntzalaritzan:
+   • fonemak adierazteko: /k/ fonema.
+   • alternantzia, aurkaritza, aukera eta antzekoak adierazteko: Biak entzuten dira
+     Elgoibarren: lore/lora.
+   • mintzaira-jarduneko etenak adierazteko; adierazi nahi den etenaren graduaren
+     arabera, barra bat [/] ala bi [//]:
+                Honela dio liburuak: / «Bizidun zelulabakarrek [...].
+                Zeuk ere // –hala nahi baduzu, / jakina– // erraz egin dezakezu.
+3. Matematikan, zatikiak adierazteko: 5/8.
+4. Legeen eta dekretuen izenetako zenbakien artean, alboetan hutsunerik utzi gabe:
+                Euskal Funtzio Publikoari buruzko uztailaren 6ko 6/1989 Legearen arabera jokatuko da.
+5. Herri-izenen euskal eta erdal formak bereizteko. Hutsunea uzten da zehar-marraren
+   bi aldeetan (hala ageri dira Euskaltzaindiaren zerrendetan): Donostia / San Sebastián,
+   Doneztebe / Santesteban, Agurain / Salvatierra… (≠ Lasarte-Oria, Gernika-Lumo eta gisakoak). Azken
+   horietan, bi herri daude bat eginda; beste haietan, herri bat da, euskal eta erdal
+   izenak elkarrekin jasota). (➛ leku-izenak, eta zehar-marra ala marratxoa)
+
+476
+6. Bata bestearen segidan idatzitako hitzen artetik bat aukeratu behar dela
+   adierazteko:
+             Bezero jauna/andrea (plurala denean, ez da barraren beharrik: Bezero
+                 jaun-andreak).
+7. Zenbait gaitan agertzen diren erlazio-multzoak aditzera emateko:
+             Begiratu iaz saldutako automobilen urteak/prezioa grafikoari.
+
+   Oharra: Barraren aurretik eta ondotik hutsunea uzten da, baldin eta alde bateko edo
+   besteko osagairen bat hitz bat baino gehiagokoa bada; bestela, ez.
+   Adibidez: Idazlea metafisikako hutsune hutsa / hutsune betea gaiez mintzatu zen hasieran; gero, mendia/mundua,
+   izan/ukan eta gisakoez. Erreparatu, hala ere, 5. puntuari.
+
+8. Interneteko baliabideak (webguneak, irudiak, bideoak…) zehazki kokatzeko,
+   URL helbideak ematean, bi barra etzan jarri ohi dira ‘http:’ markaren ondoren:
+   http://www.euskaltzaindia.eus.
+
+
+
+
+                                                                                                            477
+

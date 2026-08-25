@@ -557,6 +557,25 @@ txukun/
 - [ ] Link from Parakeet-eu README
 - [ ] Announce on Itzune social channels
 
+### Phase A/B/C: Rule-based + neural hybrid (see §7.5)
+
+#### Step A — "Txukun Lite" rule engine (pure JS, no model)
+- [ ] Tokenizer / Document model (`core/tokenizer.js`)
+- [ ] Pattern combinator library (`core/expr.js`: seq, word, anyOf, optional…)
+- [ ] Lint/Edit types + applier + diff rendering (`core/edit.js`)
+- [ ] First 20–30 Basque orthography rules (`core/rules/`): punct spacing, sentence-initial caps, doubled punctuation, repeated words, special-token artifacts
+- [ ] Dictionary layer from hunspell-eu/Xuxen wordlist (`core/dictionary.js`)
+- [ ] Edit-distance fuzzy spell suggestions
+
+#### Step B — Neural fallback layer
+- [ ] Scope MarianMT restorer to flagged spans only (skip model when rules suffice)
+- [ ] Validator: reject model edits introducing out-of-vocabulary words
+- [ ] Confidence routing: silent apply (rules) vs suggested cards (neural)
+
+#### Step C — Editor integrations
+- [ ] Browser extension prototype (model: Harper's extension architecture)
+- [ ] Optional LSP service
+
 ### Phase 2: Full Correction Suite (target: 2-3 weeks, future)
 
 #### Step 2.1 — Spell Check (Week 1)
@@ -620,6 +639,154 @@ txukun/
    - Use the model's own generation to find sentence boundaries
 
 5. **WebGPU support** — Transformers.js supports WebGPU for faster inference. This is still experimental in many browsers. Test on Chrome Canary with WebGPU flag.
+
+---
+
+## 7.5 Harper — Reference Architecture for a Rule-Based + Neural Hybrid
+
+> Study of https://github.com/automattic/harper (Apache-2.0, inspected 2026 from local clone at `/tmp/harper`).
+> Motivation: convert Txukun into a generic rule-based spell/grammar checker with smart autocorrection powered by neural models.
+
+### What Harper is
+
+A privacy-first **grammar & spell checker** written in Rust, delivered via WASM to editors (VS Code, Obsidian, Zed, Chrome, WordPress). Suggests in ~10 ms because it is **fully deterministic** — no neural inference at runtime. English-only today.
+
+### Harper's pipeline
+
+```
+Text → Parser → Document (typed tokens) → Brill POS tagger → ~333 lint rules → Lint/Edit suggestions
+```
+
+| Component | Crate | Idea worth stealing |
+|---|---|---|
+| Token/document model | `harper-core/src/document.rs` | Parse text once into typed tokens (`Word`, `Punctuation`, `Space`, `Newline`) with spans; all rules operate on tokens, never raw-string regex |
+| Pattern combinators | `harper-core/src/expr/` | Rules built declaratively: `SequenceExpr`, `SimilarToPhrase`, `Optional`, `FirstMatchOf`… each lint is one small module |
+| Dictionary as data | `harper-core/dictionary.dict` (~54k words) + `spell/rune/` | Hunspell-style affix expansion (prefix/suffix + conditions) compiles a lemma list into inflected forms; FST lookup; rich metadata (POS, dialects) per word |
+| Fuzzy spell suggest | `harper-core/src/edit_distance.rs` | Edit-distance ranking over dictionary for "did you mean" |
+| POS tagging | `harper-brill` | Brill tagger/chunker, pre-trained models stored as JSON — cheap, offline-trainable |
+| Delivery | `harper-wasm` → `packages/harper.js` → editor plugins | Same browser-local philosophy as Txukun's Transformers.js stack |
+
+### Key insight: layered confidence
+
+Harper separates **detection** (lint) from **correction** (structured `Edit` with span). Txukun's hybrid version:
+
+```
+Text → Tokenizer/Document → [Rule engine]  → high-confidence fixes (apply silently)
+                           → [Neural model] → low-confidence/semantic fixes (suggest)
+                           → [Validator]   → reject model edits producing OOV words
+```
+
+Benefits vs current Txukun design:
+- Most inputs never touch the slow model (~1 s MarianMT); rules are instant
+- Neural model becomes just another "linter" backed by inference, invoked only on flagged spans
+- Model outputs validated against dictionary/rules before applying (hallucination guard)
+- Project no longer blocked on ML improvements — rule layer ships value independently
+
+### Adaptation to Basque — feasibility notes
+
+- The ~333 English rules do NOT transfer; write **20–30 high-value Basque rules first**: punctuation spacing, sentence-initial capitals, doubled punctuation/repeated words, `<unk>` artifacts, common ASR errors
+- Hunspell-style affix engine is too rigid for Basque agglutination long-term; start with a flat lemma list seeded from **hunspell-eu / Xuxen** (openly licensed) + edit-distance fuzzy matching
+- No in-repo Basque Brill tagger exists; optional later step using `harper-pos-utils` training code or BERTeus-based tagger
+- Implement rule engine in **plain JS** (not Rust/WASM): single codebase, instant iteration; a ~200-line tokenizer + small expr combinator library suffices
+
+### Proposed Txukun v2 module layout
+
+```
+src/
+  core/
+    tokenizer.js      # Document model (tokens + spans)
+    expr.js           # pattern combinators (seq, word, anyOf…)
+    edit.js           # Lint/Edit types, applier, diff rendering
+    rules/            # one file per Basque rule
+    dictionary.js     # hunspell-eu-derived lookup + fuzzy suggest
+  neural/
+    restorer.js       # existing cap-punct pipeline, now span-scoped & optional
+    validator.js      # checks model output against dictionary/rules
+```
+
+### Phasing
+
+1. **Phase A ("Txukun Lite")**: tokenizer + expr system + 20–30 rules + hunspell-eu dictionary with fuzzy suggest — pure JS, no model download
+2. **Phase B**: neural restorer re-integrated as fallback layer, scoped to flagged spans only, output validated
+3. **Phase C**: editor integrations (browser extension or LSP), following Harper's delivery model
+
+---
+
+## 7.6 Field Survey 2026 — Grammarly, LanguageTool, and the State of GEC
+
+> Research snapshot (2026). Sources: system-design write-ups of Grammarly's architecture, ACL Anthology (LoResLM 2026, BEA 2026), LanguageTool dev docs, Harper COMPARISON.md.
+
+### The three generations of grammar correction
+
+| Generation | Approach | Examples | 2026 status |
+|---|---|---|---|
+| Gen 1 | Hand-written rules + dictionaries | LanguageTool, Harper, Xuxen | Alive; unbeatable latency (<10 ms), privacy, explainability. Best for orthography/typos |
+| Gen 2 | Specialized neural seq2seq / token-tagging (GECToR, MarianMT-style) | Txukun cap-punct model | Displaced for high-resource languages, but **still SOTA-class for low-resource languages** |
+| Gen 3 | LLM prompting / fine-tuned small LLMs, multi-stage agents | Grammarly's new stack, XGEC, agent frameworks | Dominant research direction; issues: cost, latency, over-editing/hallucination |
+
+### Key 2026 research signals
+
+- **LLMs win on quality but lose on minimal-edit discipline** — they rewrite too much. Active work: "adapting LLMs for minimal-edit GEC", explainable/joint detect+correct models (XGEC).
+- **Multi-stage LLM agent pipelines** (detect → explain → correct → verify) are the trendy architecture — mirrors the rule-first-then-neural layering planned for Txukun (§7.5).
+- **Low-resource finding (LoResLM 2026, Zarma/Bambara study)**: rule-based vs MT vs LLM comparison → **MT-based approach (M2M100) won decisively** (95.8% detection rate); rules handled only spelling; small LLMs (Gemma-2B, mT5-small) were mediocre. Lesson: seq2seq/MT fine-tuning is the right paradigm for Basque; the bottleneck is training data, not architecture.
+- **BEA 2026 shared task**: winning recipes rely on careful synthetic error generation + fine-tuning smaller models rather than raw LLM prompting.
+
+### Why Grammarly is popular (~20% tech, ~80% product)
+
+1. **Distribution everywhere**: browser extension injecting into every textarea + Word, desktop, mobile keyboards — meets users where they already write.
+2. **Freemium funnel**: free tier catches enough to feel magical; underline-in-place UX builds habit within days.
+3. **Confidence-tiered suggestions**: correctness (high confidence) vs clarity/tone/style (advisory cards) — never blurs "error" vs "could be better". Same conceptual split as our rule-layer vs neural-layer.
+4. **Hybrid pipeline**: fast deterministic checks instantly; heavier neural models server-side within a <200 ms budget; graceful degradation to simpler checks when heavy models fail. Two-stage neural design (error detector + corrector), not blind regeneration.
+5. **Trust framing**: privacy marketing, enterprise compliance.
+6. **2025–2026 pivot**: acquired Coda and Superhuman; rebranded as **Superhuman** — moving from grammar checker to agentic AI writing platform. Grammar-checking itself became a loss leader.
+
+### Other reference projects
+
+- **LanguageTool** (LGPL): closest analog for a community-driven multilingual checker — XML rules in 30+ languages plus optional **n-gram data rules** ("does this trigram ever occur in real text?") as a cheap statistical layer between rules and neural nets. Its web UI for non-coder rule authors is a proven community-scaling mechanism.
+- **Harper**: WASM/local-first delivery + expr-combinator rule system (see §7.5).
+- **GECToR lineage**: token-labeling GEC — faster than seq2seq, minimal edits by construction. Already explored via `gector-eus`.
+- **XGEC / multi-stage agents**: joint detection + explanation + correction; the "explain why" UX increases trust and doubles as a language-learning tool — strong differentiator for a minority language.
+
+### Implications for Txukun
+
+1. The hybrid rules + neural plan (§7.5) matches both Grammarly's production design and the 2026 research consensus. Phase A validated as first move.
+2. If MarianMT plateaus, consider an **M2M100-class multilingual backbone** fine-tuned for Basque correction — best-in-class for low-resource settings.
+3. Later, add a small **Basque n-gram naturalness layer** built from public corpora — nearly free at runtime, sits between rules and neural model.
+4. **Explain suggestions** (short reason per fix) — trust + learning value for Basque writers.
+5. **Distribution niche Grammarly can't touch**: ASR pipeline integration (Parakeet-eu/Whisper → Txukun) — paste-friendly API/bookmarklet for Basque speech-to-text users.
+
+---
+
+## 7.7 EBE — Agintaritza-erregela-iturriak (Euskara Batuaren Eskuliburua)
+
+> Aurreko ataletako arau-kategoriak (§7.5 "common ASR errors", §7.6 inplikazioak) orain Euskaltzaindiaren **Euskara Batuaren Eskuliburua (EBE)** eranskinetan oinarrituta daude. Hiru atal oso jaitsi eta `docs/ebe-reference/`-n gorde dira iturri gisa, P0.2 golden case-ak eta P1 arauak lurreratzeko.
+
+### Iturriak
+
+| Fitxategia | EBE atala | Edukia |
+|---|---|---|
+| `ebe-punt.txt` | Puntuazio-markak (or. 467–477) | 12 ikurren arauak: puntua, koma, puntu eta koma, bi puntuak, etenpuntuak, galdera/harridura-markak, marra luzeak, parentesiak, elkarrizketa-marra, komatxoak, marratxoa, apostrofoa, zehar-marra. Komarik EZ jartzeko kasuak ere bai (subjektuaren eta aditzaren artean, adib.) |
+| `ebe-kal.txt` | Kalko desegoki nabarmen batzuk (or. 501–510) | Erderatik ekarritako akats lexiko-semantikoak + morfosintaktikoak (izen-sintagma, aditza, perpausa). *Forma okerra → forma zuzena* formatuan. Arau-deterministen iturri nagusia |
+| `ebe-zal.txt` | Zalantza eragiten duten zenbait hitz (or. 479–490) | Hiztegiaren gomendioak: *ahalbidetu* (ez ahalderatu), *ahots* (ez abots), *abortu* (ez aborto). XUXEN estiloko ordezkapen-zerrenda kanonikoa |
+
+### Egiaztatutako baieztapenak (aurreko bertsioetako zuzenketak)
+
+1. **Maiuskulak ≠ ingeles/gaztelania** (EBE *Maiuskulak*, id=1023). Maiuskulaz soilik: izen bereziak (pertsona, leku, erakunde, jaiegun, astro leku-izen gisa), esaldi-hasiera, siglak, eta `.`/`?`/`!`/`…` ondoren. **Minuskulaz:** egunak (*astelehena*), hilabeteak (*urtarrila*), nazionalitate/hizkuntza-izenlagunak (*euskal*, *ingeles*), urtaroak. Erakundeak partzialki — *Donostiako Udala* baina *Gipuzkoako udaletan*; *Filosofiako Fakultatea* baina *gure fakultatean*. Jaiegunak maiuskulaz (*Aste Santua*, *Aberri Eguna*). Astroak leku-izen gisa: *Lurra, Eguzkia, Artizarra, Marte*.
+
+2. **Hitz-ordena: SOV neutroa, baina ez akatsa** (Euskaltzaindiaren Gramatika, 41. kap.). Marko teorikoa "informazio-egitura/galdegaia" da, ez "pragma". AUX-amaieran heuristikoa mingarria da — galdegaia perpausaren hasieran dagoenean ordena ez-neutroa da baina zuzena. → `style` iradokizun gisa soilik, konfiantza baxuz (ikus `TODO.md` P4).
+
+3. **Kalkoak = arau-iturri nagusia** (ez ingeles-zentrikoko kategoriak). EBEk *forma oker→zuzen* zerrenda kanonikoa ematen du: `*Nekatuta naiz → Nekatuta nago` (partizipioa atribuzioan), `*pena merezi → merezi`, `*ospatu bilera → bilera egin`, `*Ere daude → ...ere badaude` (lokailu-posizioa), pasibo okerrak (`*Poliziagatik atxilotua izan zen → Poliziak atxilotu zuen`), `*dagoeneko → honezkero`. Hauek P1 arauen oinarria dira.
+
+### Ezabatutako baieztapen egiaztatu gabekoak
+
+- ~~`onek→honek`~~ eta ~~`hau→au`~~ "akats arrunt" gisa: **EZ egiaztatua EBEn.** `honek` `hau`-ren ergatiboa da (deklinabide-zuzenketa egokia, ez akatsa); `au` ez da Batua-ko forma independente estandarra. `gector-eus/TODO.md`-eko espekulazioak ziren; orain EBEren kalkoetan oinarritutako arauetan ordezkatuak (`TODO.md` P1, P4).
+
+### Lotutako baliabideak (n-gram geruza, P4)
+
+- EBE eranskina PDF osoa: `https://www.euskaltzaindia.eus/components/com_ebe/pdf/EBE-eranskinak.pdf` (106 or.)
+- Maiuskulak sarrera (HTML): `https://www.euskaltzaindia.eus/component/ebe?view=bilaketa&Itemid=1161&task=bilaketa&id=1023`
+- Gramatika 41. kap. (hitzen ordena): `https://www.euskaltzaindia.eus/index.php?option=com_liburuak&ItemId=1765&task=gramatika&lang=eu&kodea=41`
+- Euskararen Erreferentzia Corpusa / Lexikoaren Behatokia / XX. mendeko Corpus Estatistikoa — n-gram geruza naturalerako (P4); Euskaltzaindiak kudeatuta
 
 ---
 
@@ -708,4 +875,132 @@ npm install @huggingface/transformers
 
 ---
 
-*This research was conducted on 2026-06-28 by analyzing HiTZ's cap-punct-eu model, Xuxen/Basque Hunspell ecosystem, Transformers.js MarianMT support, existing Basque GEC literature, and Itzune's project patterns.*
+*This research was conducted on 2026-06-28 by analyzing HiTZ's cap-punct-eu model, Xuxen/Basque Hunspell ecosystem, Transformers.js MarianMT support, existing Basque GEC literature, and Itzune's project patterns. §7.5–7.8 added 2026-08-25 during the P0→P1 revival.*
+
+---
+
+## 7.8 Harper — Implementation-level design read (P1 foundation)
+
+*A focused read of `harper-core` source (`/tmp/harper`) to decide what to steal for Txukun's `src/core/` rule engine. Conducted 2026-08-25 before P1 implementation. Reads: `token.rs`, `span.rs`, `document.rs`, `linting/{lint,suggestion,lint_kind,expr_linter,mod}.rs`, `expr/mod.rs`, `expr/sequence_expr.rs`, `linting/sentence_capitalization.rs`, `weir/mod.rs`.*
+
+### The data model (4 types)
+
+Harper's entire core is four small types:
+
+```rust
+// span.rs — a window in a char sequence (end-exclusive)
+struct Span<T> { start: usize, end: usize }   // covers start..end, not start..=end
+
+// token.rs — a parsed component of a Document
+struct Token { span: Span<char>, kind: TokenKind }  // kind = Word|Punctuation|Whitespace(+metadata)
+
+// document.rs — lexed + parsed text
+struct Document { source: Lrc<[char]>, tokens: Vec<Token> }  // source is a char buffer, not String
+
+// lint.rs — an error found in text (pure data)
+struct Lint {
+  span: Span<char>,                    // where in source
+  lint_kind: LintKind,                  // category (for UI)
+  suggestions: Vec<Suggestion>,         // zero or more fixes
+  message: String,                      // user-facing description
+  priority: u8,                         // lower = more important
+}
+```
+
+Key insight: **text is a `Vec<char>`, not a `String`.** Tokens are spans (offsets) into that buffer. This makes edits cheap (mutate the buffer) and offsets stable within a pass.
+
+### The edit model (tiny — 3 variants)
+
+```rust
+// suggestion.rs
+enum Suggestion {
+  ReplaceWith(Vec<char>),   // replace span content with these chars
+  InsertAfter(Vec<char>),   // insert these chars after the span
+  Remove,                   // delete the span
+}
+```
+
+`Suggestion::apply(span, &mut Vec<char>)` mutates the char buffer in place. That's the entire edit vocabulary — three cases, one method. Complete and minimal.
+
+`LintKind` is a ~22-variant category enum (Capitalization, Punctuation, Spelling, WordChoice, WordOrder, Style, Repetition, BoundaryError, Eggcorn, Malapropism…). Used for UI grouping/coloring, not logic.
+
+### The rule interface (two layers)
+
+**Low-level — `Linter` trait** (for structural rules):
+```rust
+trait Linter {
+  fn lint(&mut self, document: &Document) -> Vec<Lint>;
+  fn description(&self) -> &str;
+}
+```
+Two methods. Full freedom — iterate the document however you want, return lints. `sentence_capitalization.rs` uses this (it's structural: "first word of each sentence", not a pattern).
+
+**High-level — `ExprLinter` trait** (for pattern rules):
+```rust
+trait ExprLinter {
+  type Unit: DocumentIterator;   // Chunk (clause) or Sentence
+  fn expr(&self) -> &dyn Expr;   // the pattern to match
+  fn match_to_lint(&self, matched: &[Token], source: &[char]) -> Option<Lint>;  // transform → lint
+  fn description(&self) -> &str;
+}
+```
+A blanket impl turns `ExprLinter` into `Linter`: iterate chunks/sentences, run the expr matcher at each cursor, call `match_to_lint` for each match.
+
+### The pattern combinators (`Expr`)
+
+```rust
+trait Expr {
+  fn run(&self, cursor: usize, tokens: &[Token], source: &[char]) -> Option<Span<Token>>;
+}
+```
+At a cursor position, does this pattern match? Returns the matched window. Combinators: `SequenceExpr` (fluent `then_*` builder), `Optional`, `Repeating`, `FirstMatchOf`, `LongestMatchOf`, `UnlessStep`, `FixedPhrase`, `AnchorStart`/`AnchorEnd`, `Filter`, `Not`, `SpaceOrHyphen`. Navigation via `TokenStringExt`: `iter_sentences()`, `iter_chunks()` (clause between commas), `iter_words()`, `first_non_whitespace()`.
+
+This is the `seq`/`word`/`anyOf`/`optional` vocabulary `TODO.md` references.
+
+### The application model (iterative re-lint)
+
+Harper does **not** apply all lints at once with offset bookkeeping. Instead (`weir/mod.rs:transform_to_expected`):
+
+1. Apply the *first* lint's first suggestion → `Suggestion::apply(span, &mut chars)`
+2. Re-tokenize the new text → new `Document`
+3. Re-lint → new `Vec<Lint>`
+4. Repeat (BFS, depth ≤ `MAX_SUGGESTION_TRANSFORMATION_DEPTH` = 100)
+
+Simple and correct (no offset-shift bugs), at the cost of O(passes × lint-cost). For <10ms / ~20 rules this is fine.
+
+### What `sentence_capitalization.rs` reveals (the F1 analogue)
+
+The Basque F1 failure ("etorri da gaur" → unchanged) maps directly to Harper's `SentenceCapitalization` linter. Reading it:
+
+- **The happy path is 5 lines**: for each sentence, find `first_non_whitespace()`, if it's a lowercase word, emit `Lint { span, ReplaceWith(word_with_uppercase_first_char) }`.
+- **The other 80 lines are exceptions**: proper nouns (`npm`), camelCase trademarks (`macOS`), lowercase proper nouns (`mRNA`). These all consult `dictionary.get_correct_capitalization_of()` + `metadata.is_proper_noun()` — **FST dictionary metadata we don't have.**
+- **For Basque, the exceptions are different**: EBE Maiuskulak §1.1 says sentence-initial is *always* capitalized — `euskal`→`Euskal`, `astelehena`→`Astelehena` at sentence start (the lowercase rule is *mid-sentence*). Basque has no `npm`/`mRNA`-style lowercase-proper-nouns. **So our F1 rule needs no dictionary, no exceptions for batch 1** — just "uppercase the first alphabetic char of each segment." Simpler than Harper's.
+
+### Decision: what to steal vs. skip for P1
+
+**Steal (high value, low complexity):**
+1. **`Lint` + `Suggestion` data model** — the 3-variant edit enum is exactly right (minimal, complete, proven). Map `LintKind` → EBE categories (Calque, Confusable, Capitalization, Punctuation).
+2. **Span-based tokens** with end-exclusive `{start, end}` offsets (we already track offsets in `analyze.js`).
+3. **`Linter` trait shape** → JS `Rule` interface: `lint(doc) => Lint[]` + `description`. Start with *only* this layer.
+4. **Iterative apply** (one suggestion → re-tokenize → re-lint) — sidesteps all offset-shift bookkeeping.
+5. **`LintKind` category enum** — for UI grouping + the eval harness (track per-category fix rates).
+
+**Skip (YAGNI for batch 1 — 5–10 rules):**
+1. **`ExprLinter` + `Expr` combinators** — a DSL needs ≥50 rules to pay off. A rule is just a function for now; add combinators only when a rule is painful to write imperatively.
+2. **FST dictionary + per-word metadata** (`is_proper_noun`, `get_correct_capitalization_of`) — use small allowlists for the few exceptions that arise.
+3. **Brill POS tagger** — no morphology needed for phrase/token-level EBE calques (batch 1). `is_full_sentence` (nominal+verb) is too English-POS-dependent; for Basque use a simpler heuristic or skip.
+4. **`Markdown`/`PlainEnglish` parsers** — `analyze.js:stripMarkdown` already exists.
+5. **`FatToken`** — a WASM-bridge serialization detail; not needed in-process.
+
+### Implication for the P1 plan
+
+The minimal `src/core/` engine is **4 small files**, not the 4 *systems* `TODO.md` originally listed:
+
+| File | Harper analogue | What it is |
+|---|---|---|
+| `src/core/types.js` | `Lint` + `Suggestion` + `LintKind` | 3-type data model (≈30 lines) |
+| `src/core/document.js` | `Document` + `Token` + `Span` | tokenize → `[{start,end,kind,text}]` (≈60 lines) |
+| `src/core/engine.js` | `Linter` trait + iterative apply | `runRules(text, rules) → {corrected, lints}` (≈50 lines) |
+| `src/core/rules/*.js` | `linting/*.rs` | one file per rule, each `export default { lint(doc), description }` |
+
+**No `expr.js` for batch 1.** No `tokenizer.js` with POS tagging. The first rule (`sentenceInitialCap`) is ~15 lines and targets the 3 strict F1 failures (c001, c024, c043) — lifting the headline from 81.8% toward ~95% and proving the rule-layer thesis before any abstraction investment.

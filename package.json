@@ -12,7 +12,12 @@
     "postinstall": "npm run copy-dicts",
     "copy-dicts": "mkdir -p public/dicts && cp node_modules/dictionary-eu/index.aff public/dicts/eu.aff && cp node_modules/dictionary-eu/index.dic public/dicts/eu.dic",
     "preview": "vite preview",
-    "deploy": "npm run build && gh-pages -d dist"
+    "deploy": "npm run build && gh-pages -d dist",
+    "test:cap-punct": "node tests/cap-punct/eval.mjs",
+    "test:cap-punct:check": "node tests/cap-punct/eval.mjs --check",
+    "test:core": "node tests/core/rule-engine.test.mjs",
+    "test:spell": "node tests/gec-benchmark/eval-tier1.mjs",
+    "test": "npm run test:core && npm run test:cap-punct:check && npm run test:spell"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -26,9 +31,7 @@
     "@huggingface/transformers": "^3.6.0",
     "@lezer/markdown": "^1.7.2",
     "dictionary-eu": "^4.0.0",
-    "hunspell-asm": "^4.0.2",
-    "idaztian": "^1.4.1",
-    "nspell": "^2.1.5"
+    "idaztian": "^1.4.1"
   },
   "devDependencies": {
     "gh-pages": "^6.0.0",

@@ -13,6 +13,9 @@
 import { pipeline } from '@huggingface/transformers';
 import { loadSpellChecker } from './spell.js';
 import { initGector, isGectorReady, isGectorFailed } from './gector.js';
+import { cleanModelOutput } from './core/clean-output.js';
+import { runRules } from './core/engine.js';
+import { allRules } from './core/rules/index.js';
 
 // ── State ───────────────────────────────────────────
 
@@ -228,9 +231,14 @@ function splitIntoSegments(text) {
 }
 
 /**
- * Run MarianMT cap-punct correction on the full text.
- * Splits into sentence-length segments first (the model was trained on
- * individual sentences, not paragraphs).
+ * Run MarianMT cap-punct correction on the full text, then apply the P1
+ * deterministic rule layer (sentence-initial cap, terminal punct, vocative
+ * comma) to fix remaining gaps. Splits into sentence-length segments first
+ * (the model was trained on individual sentences, not paragraphs).
+ *
+ * If the model is not yet loaded, still applies the rule layer ("Txukun Lite"
+ * mode — basic cap+punct without the neural model).
+ *
  * Returns the corrected text with only case/punctuation changes applied,
  * plus per-segment match rates so callers can assign per-correction
  * confidence instead of a single global average.
@@ -239,7 +247,11 @@ function splitIntoSegments(text) {
  * @returns {Promise<{corrected: string, matchRate: number, segmentRates: Array<{start: number, end: number, rate: number}>}>}
  */
 export async function correctCapPunct(text) {
-  if (!modelLoaded || !correctorPipeline) return { corrected: text, matchRate: 1.0, segmentRates: [] };
+  if (!modelLoaded || !correctorPipeline) {
+    // Model not loaded — still apply deterministic rules (Txukun Lite mode)
+    const { corrected } = runRules(text, allRules);
+    return { corrected, matchRate: 1.0, segmentRates: [] };
+  }
 
   const segments = splitIntoSegments(text);
   const results = [];
@@ -254,19 +266,18 @@ export async function correctCapPunct(text) {
     }
     const segStart = offset;
     const out = await correctorPipeline(seg.text);
-    let corrected = out[0]?.translation_text || seg.text;
-    corrected = corrected
-      .replace(/<\/?s>/g, '').replace(/<pad>/g, '').replace(/<unk>/g, '')
-      .replace(/\s{2,}/g, ' ').trim();
+    let corrected = cleanModelOutput(out[0]?.translation_text || seg.text);
     const { text: constrained, matchRate } = constrainCapPunct(seg.text, corrected);
     results.push({ text: constrained || seg.text, sep: seg.sep });
     matchRates.push(matchRate);
     segmentRates.push({ start: segStart, end: segStart + seg.text.length, rate: matchRate });
     offset += seg.text.length + seg.sep.length;
   }
-  const corrected = results.map((r) => r.text + r.sep).join('').trimEnd();
+  const modelOutput = results.map((r) => r.text + r.sep).join('').trimEnd();
+  // Apply deterministic rule layer on top of model output (P1)
+  const { corrected: ruled } = runRules(modelOutput, allRules);
   const avgMatchRate = matchRates.length > 0
     ? matchRates.reduce((a, b) => a + b, 0) / matchRates.length
     : 1.0;
-  return { corrected, matchRate: avgMatchRate, segmentRates };
+  return { corrected: ruled, matchRate: avgMatchRate, segmentRates };
 }
