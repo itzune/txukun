@@ -80,12 +80,13 @@ Jatorria: `XUXEN_ISSUES.md` eta `ISSUE_LOG.md`.
 - [x] **`src/core/document.js`** — Harper-en `Document`+`Token`+`Span` erreplika minimoa: `tokenize(text) → [{start,end,kind,text}]` (~60 lerro). End-exclusive spans; `iterSentences()`/`firstNonWhitespace()` navigation
 - [x] **`src/core/engine.js`** — `Linter` trait + iterative apply: `runRules(text, rules) → {corrected, lints}` (~50 lerro). Apply one suggestion → re-tokenize → re-lint (offset-shift-ariketagabea, Harper `weir/mod.rs`-en eredu)
 - [x] **`src/core/rules/sentence-initial-cap.js`** — Lehen araua: segmentu bakoitzaren lehen karaktere alfabetikoa maiuskulaz. EBE Maiuskulak §1.1. **Salbuespenik ez batch 1-erako** (euskarak ez ditu `npm`/`mRNA`-estiloko minuskula-izen bereziak; esaldi-hasieran beti maiuskula). Helburua: c001, c024, c043 zorrotz-kasuak konpondu
-- [x] **`src/core/rules/terminal-punct.js`** — Amaierako puntuazioa: deklaribo→`.`, galdera-pronominak (`zer/nora/noiz/non/nola/zergatik/zien`)→`?`. EBE Puntuazio-markak §1, §6
-- [x] **`src/core/rules/vocative-comma.js`** — Bokatiboa: agurra/eskerra (kaixo, agur, gabon) + hitza → koma. EBE koma §3
+- [x] **`src/core/rules/terminal-punct.js`** — Amaierako puntuazioa: deklaribo→`.`, galdera-pronominak→`?`, agur harridurazkoak→`!` (batch 3). `.`→`!` ordezkapena ere bai (c060). EBE Puntuazio-markak §1, §2.3, §6
+- [x] **`src/core/rules/vocative-comma.js`** — Bokatiboa: agurra/eskerra (kaixo, agur, gabon) + hitza → koma. Hitz anitzeko esapideak ere (eskerrik asko, egun on). EBE koma §3. Batch 3: hitz anitzeko esapide-detekzioa
 - [x] **`src/core/rules/asr-artifacts.js`** — ASR artifactuak (`<unk>`, `<pad>` etab.) — P0.3-ko `cleanModelOutput` berrerabili (jada `src/core/clean-output.js`-en dago)
 - [x] **`src/core/rules/index.js`** — Rule registry: `allRules = [sentenceBoundary, sentenceInitialCap, vocativeComma, terminalPunct]`
 - [x] **`src/core/rules/sentence-boundary.js`** — F4: AUX + temporal adberbioa + bigarren AUX → puntua (RESEARCH.md §7.9). Second-AUX guard-ak saihestu post-positioned temporal false-positiveak ("etorri naiz gaur"). c070 konpontzen du; c071 ez du split-ten (alborakuntza = esaldi bakarra, EBE §1)
-- [x] **`tests/core/rule-engine.test.mjs`** — 35 unit test (instant, eredu gabe): tokenizer, iterSentences, 4 arauak, F1 simulazioak, F4 split + false-positive guard-ak, regression guard, idempotency
+- [x] **`src/core/rules/greetings.js`** — Agur-/esker-esapideen datuak (shared data module): EXCLAMATORY_GREETINGS, EXCLAMATORY_PHRASES, DECLARATIVE_PHRASES. RESEARCH.md §7.10
+- [x] **`tests/core/rule-engine.test.mjs`** — 41 unit test (instant, eredu gabe): tokenizer, iterSentences, 4 arauak, F1 simulazioak, F2 hitz anitzeko esapideak + `.`→`!` ordezkapena, F4 split + false-positive guard-ak, regression guard, idempotency
 - [x] **Produkzio-integrazioa** — `src/models.js:correctCapPunct`-en rule engine txertatuta. Eredua kargatu gabean ere arauak funtzionatzen du ("Txukun Lite" modua)
 - [x] **Eval integrazioa** — `tests/cap-punct/eval.mjs`-en RULED metrika gehituta (RAW / CONSTRAINED / RULED). `--no-rules` flag-a
 - [x] **c071 golden kasua zuzenduta** — Ikerketak (§7.9) erakutsi zuen jatorrizko periodak-esperantza EBE-ren aurkakoa zela: alborakuntza (asyndetic coordination) esaldi bakarra da komekin (EBE puntuazioa §1 oina). Expected komak bertsiora aldatuta

@@ -8,14 +8,14 @@ model swaps) is measured against it.
 
 ## Headline
 
-| Metric | Baseline (q8) | + P1 batch 1 | + P1 batch 2 (F4) | Δ total |
-|---|---|---|---|---|
-| CONSTRAINED strict exact-match | 18/22 (81.8%) | 22/22 (100%) | **22/22 (100%)** | **+4** |
-| RAW exact-match | 20/33 (60.6%) | 21/33 (63.6%) | 21/33 (63.6%) | +1 |
-| CONSTRAINED exact-match (all) | 19/33 (57.6%) | 20/33 (60.6%) | 20/33 (60.6%) | +1 |
-| RULED exact-match (all) | — | 23/33 (69.7%) | **25/33 (75.8%)** | +6 |
-| Mean norm. Levenshtein | 0.477 | 0.351 | **0.287** | -0.190 |
-| **Regressions** | — | 0 | **0** | **0** |
+| Metric | Baseline (q8) | + P1 batch 1 | + batch 2 (F4) | + batch 3 (F2) | Δ total |
+|---|---|---|---|---|---|
+| CONSTRAINED strict exact-match | 18/22 (81.8%) | 22/22 (100%) | 22/22 (100%) | **22/22 (100%)** | **+4** |
+| RAW exact-match | 20/33 (60.6%) | 21/33 (63.6%) | 21/33 (63.6%) | 21/33 (63.6%) | +1 |
+| CONSTRAINED exact-match (all) | 19/33 (57.6%) | 20/33 (60.6%) | 20/33 (60.6%) | 20/33 (60.6%) | +1 |
+| RULED exact-match (all) | — | 23/33 (69.7%) | 25/33 (75.8%) | **27/33 (81.8%)** | +8 |
+| Mean norm. Levenshtein | 0.477 | 0.351 | 0.287 | **0.224** | -0.253 |
+| **Regressions** | — | 0 | 0 | **0** | **0** |
 
 ### P1 rule layer — 2026-08-25
 
@@ -23,8 +23,8 @@ Added 4 deterministic EBE-grounded rules on top of the constrained model output:
 
 1. `sentence-boundary` — split at AUX + temporal-adverb boundary (F4, EBE §1) — *batch 2*
 2. `sentence-initial-cap` — uppercase first word of each sentence (EBE Maiuskulak §1.1)
-3. `terminal-punct` — add `.` (declarative) or `?` (interrogative pronoun) (EBE §1, §6)
-4. `vocative-comma` — insert comma after greeting interjections (EBE koma §3)
+3. `terminal-punct` — add `.` (declarative), `?` (interrogative), or `!` (exclamatory greeting); also replaces `.`→`!` for vocative greetings (EBE §1, §2.3, §6) — *batch 3: added `!` + `.`→`!` replacement*
+4. `vocative-comma` — insert comma after greeting interjections and multi-word phrases (EBE koma §3) — *batch 3: added multi-word phrase detection*
 
 Fixed all 4 strict failures (c001, c024, c043, c080) with **zero regressions**:
 
@@ -83,12 +83,23 @@ interrogative pronoun→`?`). These are exactly the cases EBE *Puntuazio-markak*
 cover deterministically. **c001, c024, c043 now pass. c091 is `strict:false`
 (known-hard institution capitalization — needs gazetteer).**
 
-### F2. Vocative comma never inserted (2 cases) — partially fixed
-`c060` "kaixo mikel"→"Kaixo, Mikel." (comma added by rule, but end mark `!` vs `.`
-and proper-noun cap `Mikel` still missing), `c061` "eskerrik asko miren"→no comma
-(needs multi-word greeting detection — "eskerrik asko" is a two-word phrase).
-Both `strict:false`. **The vocative-comma rule now fires for single-word greetings
-(kaixo, agur, gabon). c061 needs the multi-word phrase matcher (batch 2).**
+### F2. Vocative comma + greeting punctuation (2 cases) ✅ FIXED
+`c060` "kaixo mikel"→**"Kaixo, Mikel!"** ✅ and `c061` "eskerrik asko miren"→**"Eskerrik asko, Miren."** ✅
+
+Three changes (batch 3, RESEARCH.md §7.10):
+1. **Multi-word phrase detection** in `vocative-comma`: "eskerrik asko", "egun on",
+   "arratsalde on" etc. now detected via shared `greetings.js` data module.
+2. **Exclamatory greeting `!`** in `terminal-punct`: sentences starting with an
+   interjection greeting (kaixo, agur, gabon, egun on…) take `!` not `.`.
+   EBE §2.3: "Kaixo, Mikel!"; EBE §1: "Arratsalde on!".
+3. **`.` → `!` replacement**: when the model outputs `Kaixo Mikel.` (wrong period),
+   the rule replaces `.` with `!`. Previously the rule only *inserted* missing punct.
+
+Key distinction (verified against Euskaltzaindia Buletina 2024): interjection
+Greetings (kaixo, egun on) → exclamatory `!`; gratitude expressions (eskerrik asko)
+→ declarative `.`. A word-count heuristic (greeting + ≤1 word → `!`, 2+ words → `.`)
+distinguishes vocative-name pattern (c060: "Kaixo, Mikel!") from longer content
+(c080: "Kaixo, egun on guztioi." — preserved, no regression).
 
 ### F3. Normalization broken + constraint-rejected (4 cases) — c080 fixed
 `c080` "kaixo egun on guztioi"→now **"Kaixo, egun on guztioi."** ✅ (vocative-comma rule);
@@ -137,7 +148,7 @@ or a better model. Correctly marked `strict:false` — not part of the headline.
    blocker is removed.
 2. **P1 rule layer is proven** — 4 deterministic EBE-grounded rules lift strict
    accuracy from 81.8% → **100%** with zero regressions, and all-case exact-match
-   from 57.6% → **75.8%** (mean Levenshtein 0.477 → 0.287). The rule-layer thesis
+   from 57.6% → **81.8%** (mean Levenshtein 0.477 → 0.224). The rule-layer thesis
    (rules close the gaps the neural model leaves) is validated.
 3. **The rule engine is wired into production** (`src/models.js:correctCapPunct`)
    — the app now applies rules on top of model output. If the model isn't loaded

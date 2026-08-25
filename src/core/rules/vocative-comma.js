@@ -2,15 +2,16 @@
  * Txukun rule — Bokatiboaren koma (vocative/greeting comma)
  *
  * EBE koma §3: bokatiboa → koma. After a greeting interjection (kaixo, agur,
- * gabon) followed by more content, insert a comma to separate the greeting
- * from the addressed phrase.
+ * gabon) or greeting phrase (eskerrik asko, egun on, arratsalde on) followed
+ * by more content, insert a comma to separate the greeting from the
+ * addressed phrase.
  *
- *   "kaixo mikel"     → "Kaixo, Mikel"     (comma after greeting)
- *   "kaixo egun on…"  → "Kaixo, egun on…"  (comma after greeting)
+ *   "kaixo mikel"          → "Kaixo, Mikel"          (single-word greeting)
+ *   "eskerrik asko miren"  → "Eskerrik asko, Miren"  (multi-word phrase)
+ *   "egun on mikel"        → "Egun on, Mikel"        (multi-word phrase)
  *
- * Only handles single-word greetings in batch 1. Multi-word greetings
- * ("eskerrik asko", "egun on", "arratsalde on") are deferred — they need
- * phrase matching and none are strict:true cases.
+ * Handles both single-word greetings and multi-word greeting phrases.
+ * Phrase data is shared with terminal-punct via greetings.js.
  *
  * Targets F2 (c060, c061 — strict:false) and F3/c080 (strict:true).
  *
@@ -18,13 +19,7 @@
  */
 
 import { LintKind, lint, insertAfter } from '../types.js';
-
-// Single-word greeting interjections (EBE koma §3: bokatiboa)
-const GREETINGS = new Set([
-  'kaixo',   // hi/hello
-  'agur',    // goodbye
-  'gabon',   // good night
-]);
+import { EXCLAMATORY_GREETINGS, ALL_GREETING_PHRASES } from './greetings.js';
 
 export default {
   description: 'Bokatiboa: agurraren ondoren koma (EBE koma §3)',
@@ -32,36 +27,48 @@ export default {
   lint(doc) {
     const lints = [];
     for (const sentence of doc.iterSentences()) {
-      // Find first word; check if it's a greeting
-      let greetingIdx = -1;
-      for (let i = 0; i < sentence.length; i++) {
-        if (sentence[i].kind === 'word') {
-          if (GREETINGS.has(sentence[i].text.toLowerCase())) {
-            greetingIdx = i;
-          }
-          break; // only check the first word
+      const words = sentence.filter((t) => t.kind === 'word');
+      if (words.length === 0) continue;
+
+      const first = words[0];
+      let commaAfter = null; // token after which to insert the comma
+
+      // 1) Single-word greeting (kaixo, agur, gabon)
+      if (EXCLAMATORY_GREETINGS.has(first.text.toLowerCase())) {
+        // Need at least one more word after the greeting for the vocative pattern
+        if (words.length >= 2) {
+          commaAfter = first;
         }
       }
-      if (greetingIdx < 0) continue;
 
-      const greeting = sentence[greetingIdx];
+      // 2) Multi-word greeting phrase (eskerrik asko, egun on, …)
+      if (!commaAfter) {
+        for (const phrase of ALL_GREETING_PHRASES) {
+          const pw = phrase.split(' ');
+          if (words.length < pw.length + 1) continue; // phrase + ≥1 more word
+          const matches = pw.every((w, i) => words[i].text.toLowerCase() === w);
+          if (matches) {
+            commaAfter = words[pw.length - 1]; // last word of the phrase
+            break;
+          }
+        }
+      }
 
-      // Find the next non-whitespace token after the greeting
-      let next = null;
-      for (let i = greetingIdx + 1; i < sentence.length; i++) {
+      if (!commaAfter) continue;
+
+      // Idempotency: skip if a comma already follows the greeting/phrase
+      const afterIdx = sentence.indexOf(commaAfter);
+      let nextRaw = null;
+      for (let i = afterIdx + 1; i < sentence.length; i++) {
         if (sentence[i].kind !== 'whitespace') {
-          next = sentence[i];
+          nextRaw = sentence[i];
           break;
         }
       }
-      if (!next) continue; // greeting is the only content — no comma needed
-
-      // Only insert comma when a word follows (the greeting + vocative pattern).
-      // If only punctuation follows, the greeting is standalone (e.g. "Kaixo.").
-      if (next.kind !== 'word') continue;
+      if (nextRaw && nextRaw.kind === 'punctuation' && nextRaw.text === ',') continue;
 
       lints.push(lint({
-        span: { start: greeting.start, end: greeting.end },
+        span: { start: commaAfter.start, end: commaAfter.end },
         kind: LintKind.Punctuation,
         suggestions: [insertAfter(',')],
         message: 'Agurraren ondoren koma behar da (bokatiboa)',

@@ -236,8 +236,9 @@ test('inserts comma after kaixo', () => {
 
 test('inserts comma after kaixo + name', () => {
   const { corrected } = runRules('kaixo mikel', allRules);
-  // Note: 'mikel' stays lowercase — proper-noun cap is a future rule (batch 2)
-  eq(corrected, 'Kaixo, mikel.');
+  // 'mikel' stays lowercase (proper-noun cap = future gazetteer rule),
+  // but '!' is added: greeting + 1 word = vocative name pattern (EBE §2.3)
+  eq(corrected, 'Kaixo, mikel!');
 });
 
 test('skips when comma already present', () => {
@@ -248,13 +249,55 @@ test('skips when comma already present', () => {
 
 test('skips greeting-only sentence (no comma needed)', () => {
   const { corrected, lints } = runRules('kaixo', allRules);
-  eq(corrected, 'Kaixo.');
-  // No vocative comma (no content after greeting), but cap+punct still fire
+  eq(corrected, 'Kaixo!');
+  // No vocative comma (no content after greeting), but cap + '!' still fire
+  // (standalone interjection → '!' per EBE §1: "Arratsalde on!")
 });
 
 test('c080: "kaixo egun on guztioi" → "Kaixo, egun on guztioi."', () => {
   const { corrected } = runRules('kaixo egun on guztioi', allRules);
+  // 3 words after greeting → NOT exclamatory (longer content, not vocative name)
   eq(corrected, 'Kaixo, egun on guztioi.');
+});
+
+// ── Rule: multi-word greeting phrases (F2 batch 2) ──
+
+console.log('\nF2 multi-word greeting phrases:');
+test('c061: "eskerrik asko miren" → comma after phrase, period', () => {
+  const { corrected } = runRules('eskerrik asko miren', allRules);
+  // "eskerrik asko" is a DECLARATIVE phrase (gratitude → '.', not '!')
+  // Euskaltzaindia Buletina 2024: "Eskerrik asko."
+  eq(corrected, 'Eskerrik asko, miren.');
+});
+
+test('"egun on mikel" → comma after phrase, exclamation', () => {
+  const { corrected } = runRules('egun on mikel', allRules);
+  // "egun on" is an EXCLAMATORY phrase + 1 word (vocative) → '!'
+  eq(corrected, 'Egun on, mikel!');
+});
+
+test('"eskerrik asko" standalone → period, no comma', () => {
+  const { corrected } = runRules('eskerrik asko', allRules);
+  eq(corrected, 'Eskerrik asko.');
+});
+
+test('"egun on" standalone → exclamation', () => {
+  const { corrected } = runRules('egun on', allRules);
+  eq(corrected, 'Egun on!');
+});
+
+test('c060 model output: replaces . with ! for exclamatory greeting', () => {
+  // Simulates model output: "Kaixo Mikel." (period, no comma)
+  // Rules should add comma AND replace . with !
+  const { corrected } = runRules('Kaixo Mikel.', allRules);
+  eq(corrected, 'Kaixo, Mikel!');
+});
+
+test('does NOT replace . with ? for interrogatives (deferred)', () => {
+  // Embedded-question risk: "Zer egin duen ez dakit." is declarative.
+  // '.' → '?' replacement deferred to avoid false positives.
+  const { corrected } = runRules('Non bizi zara.', allRules);
+  eq(corrected, 'Non bizi zara.');
 });
 
 // ── Idempotency ─────────────────────────────────────

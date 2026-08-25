@@ -1140,3 +1140,102 @@ including the auxiliary/temporal sets.
 - Mean Levenshtein: 0.351 → **0.287**
 - Strict: held at 22/22 (100%) — both fixed cases are `strict:false`
 - **Zero regressions**
+
+---
+
+## 7.10 F2 — Agur-puntuazioa eta hitz anitzeko esapideak (greeting punctuation + multi-word phrases)
+
+Research conducted before implementing the F2 batch (c060, c061). Two questions:
+(1) do greetings take `!` or `.`? (2) how to detect multi-word greeting phrases
+like "eskerrik asko"?
+
+### Finding 1: EBE explicitly shows greetings take '!'
+
+EBE puntuazioa §2.3 (bokatiboa, line 53-54):
+> `Kaixo, Mikel! Kaixo, Mikel, zer moduz? Entzun, adiskideok, azken berriak.`
+
+EBE §1 (line 29) — verbless sentences (aditzik gabea):
+> `Bai edo Arratsalde on! edo Zorionak, Amaia!`
+
+Both show greeting interjections taking `!`. EBE §6 (harridura-marka): `!` is for
+exclamatory/interjection sentences.
+
+### Finding 2: "Eskerrik asko" takes '.' (period), NOT '!'
+
+This was the critical question — is c061's golden expectation (`.`) correct, or is
+it another c071 (where the golden was wrong)?
+
+**Verified correct.** Euskaltzaindia Buletina 2024 (the academy's own publication)
+uses:
+> `Eskerrik asko, Joxean, eman eta irakatsi diguzun guztiagatik. … Eskerrik asko.`
+
+Both instances use period, not exclamation. "Eskerrik asko" is a **gratitude
+expression** (declarative), not an interjection (exclamatory). The distinction:
+
+| Category | Examples | Punctuation |
+|---|---|---|
+| Interjection greetings | kaixo, agur, gabon, egun on, arratsalde on | `!` |
+| Gratitude expressions | eskerrik asko | `.` |
+
+### Finding 3: Word-count heuristic distinguishes vocative from longer content
+
+A subtlety: c060 (`kaixo mikel` → `Kaixo, Mikel!`) needs `!`, but c080
+(`kaixo egun on guztioi` → `Kaixo, egun on guztioi.`) is **strict:true** and needs
+`.`. Both start with "kaixo". How to distinguish?
+
+The EBE distinction is **vocative** (direct address, short) vs. longer content:
+- "Kaixo, Mikel!" = greeting + vocative NAME → `!`
+- "Kaixo, egun on guztioi." = greeting + longer phrase → `.`
+
+Without a gazetteer, we can't detect names. **Proxy heuristic**: greeting + ≤1 word
+→ `!` (vocative name pattern); greeting + 2+ words → `.` (longer content).
+
+Verified against all golden cases:
+- c060: "kaixo mikel" — 1 word after greeting → `!` ✓
+- c080: "kaixo egun on guztioi" — 3 words after greeting → `.` ✓ (preserved!)
+- c070: "kaixo ni miren naiz…" — many words → `.` ✓
+
+### Finding 4: The model adds wrong terminal punctuation (c060)
+
+c060's model output is `Kaixo Mikel.` (capitalized, with period — but wrong mark).
+The old terminal-punct rule only *inserted* missing punctuation; it skipped
+sentences that already had terminal punct. To fix c060, the rule needed to
+**replace** `.` with `!`.
+
+Implemented: when the sentence ends with `.` but should be exclamatory (greeting +
+≤1 word), `replaceWith('!')` replaces the period.
+
+**`.` → `?` replacement is deferred** — risk: embedded questions like
+"Zer egin duen ez dakit." (I don't know what (s)he did.) start with an interrogative
+pronoun but are declarative. Replacing `.` with `?` would false-positive these.
+Only `.` → `!` is safe (greetings + ≤1 word is a narrow, reliable signal).
+
+### Finding 5: Shared greeting data module
+
+Greeting sets are needed by two rules:
+- `vocative-comma`: all greeting phrases (for comma insertion)
+- `terminal-punct`: only exclamatory greetings (for `!` emission)
+
+Created `src/core/rules/greetings.js` as a shared data module:
+- `EXCLAMATORY_GREETINGS` (Set): {kaixo, agur, gabon} — single-word, take `!`
+- `EXCLAMATORY_PHRASES` (Array): [egun on, arratsalde on, eguerdi on] — multi-word, take `!`
+- `DECLARATIVE_PHRASES` (Array): [eskerrik asko] — takes `.`
+- `ALL_GREETING_PHRASES`: concatenation (for comma insertion)
+
+Note: "gabon gau" excluded — "gabon" alone already means "good night"; "gabon gau"
+is redundant and would conflict with the single-word "gabon" check.
+
+### Finding 6: "eskerrikasko" (one-word variant) exists but is rare
+
+EBE zalantza-hittak (ebe-zal.txt, line 406): `eskerrikasko / eskerrik asko` — both
+forms are accepted. The one-word form wouldn't be caught by the multi-word phrase
+matcher. Deferred — the two-word form is far more common in practice.
+
+### Result
+
+- **c060** ✓ PASS — `Kaixo Mikel.` → comma inserted + `.` replaced with `!` → `Kaixo, Mikel!`
+- **c061** ✓ PASS — `Eskerrik asko Miren.` → comma after "eskerrik asko" → `Eskerrik asko, Miren.`
+- RULED all exact-match: 25/33 (75.8%) → **27/33 (81.8%)**
+- Mean Levenshtein: 0.287 → **0.224**
+- Strict: held at 22/22 (100%) — both fixed cases are `strict:false`
+- **Zero regressions** (c080 strict:true preserved by the word-count heuristic)
