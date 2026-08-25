@@ -1,130 +1,207 @@
-import pdfplumber, sys, re
+#!/usr/bin/env python3
+"""
+v6 extractor — clean multi-word zalantza extraction.
+
+Fixes over v5:
+  - parens → comma (variant separator), NOT space. Fixes "amorrai amorrain".
+  - hyphen-joiner: remove following tag so "aire(<R>-)<R>garraio" → "aire-garraio"
+    (one hyphenated word, not two).
+  - ';' → comma (separates bold targets).
+  - re-apply verb-collision filter (gara = "we are").
+  - categorize pairs by type (A: phrase→compound, B: phrase→phrase,
+    C: single→phrase, D: hyphenated→...).
+
+Outputs clean categorized TSVs + report.
+"""
+import pdfplumber, re, sys, json, subprocess
+
 PDF = "/tmp/EBE-eranskinak.pdf"
 RED = (0, 1, 1, 0)
+VERB_COLLISION = {"gara"}  # gara = "we are" (auxiliary) AND "geltoki" (loanword)
+
 def char_class(c):
-    col=c.get("non_stroking_color"); font=c.get("fontname","")
-    if col==RED: return "R"
+    col = c.get("non_stroking_color"); font = c.get("fontname", "")
+    if col == RED: return "R"
     if "Bold" in font: return "B"
     return "k"
-WORD=re.compile(r"[A-Za-zÁÉÍÓÚáéíóúÑñÜü\-\.\?]+")
 
-# Collect per-line token lists WITH delimiter info, and detect (-) join
-lines=[]
-with pdfplumber.open(PDF) as pdf:
-    for pno in range(27,48):
-        pg=pdf.pages[pno]; mid=pg.width/2
-        for colname, colchars in [("L",[c for c in pg.chars if c["x0"]<mid]),
-                                   ("R",[c for c in pg.chars if c["x0"]>=mid])]:
-            lns={}
-            for c in colchars: lns.setdefault(round(c["top"]),[]).append(c)
-            for top in sorted(lns):
-                cs=sorted(lns[top],key=lambda c:c["x0"])
-                s="".join(c["text"] for c in cs); classes=[char_class(c) for c in cs]
-                # tokenize with delimiter tracking; treat (-) as JOINER (hyphen)
-                # First, mark which chars are part of a (-) or (<x>-) sequence -> replace with '-'
-                # Build a cleaned char stream: collapse '(', optional color, '-', ')' to '-'
-                # Work on the raw char list: find subsequences matching ( - ) possibly with color tags
-                # Simpler: build string, then regex-replace r'\(<[^>]*>-\)|\(-\)' with '-' on the STRING,
-                # but classes list must stay aligned. Since replacement is shorter, re-derive classes after.
-                # Easiest: rebuild tokens directly from chars, treating ( ) as delimiters UNLESS they form (-)
-                tokens=[]; cur=[]; curcl=None; i=0; n=len(cs)
-                while i<n:
-                    c=cs[i]; t=c["text"]; cl=char_class(c)
-                    # detect '(', optional '<color>', '-', ')'
-                    if t=="(":
-                        # look ahead for optional <..> then '-' then ')'
-                        j=i+1; ok=False
-                        # skip a color-tag-like sequence? chars are individual: '<','R','>'
-                        # check: next chars form '<X>' then '-' then ')'
-                        if j+2<n and cs[j]["text"]=="<" and cs[j+2]["text"]==">":
-                            j+=3
-                        if j<n and cs[j]["text"]=="-" and j+1<n and cs[j+1]["text"]==")":
-                            # this is a (-) or (<R>-) hyphen joiner -> append '-' to current word if same class
-                            if cur and curcl is not None:
-                                cur.append(("-",curcl))  # join
-                            else:
-                                # start new with hyphen
-                                if cur: tokens.append(("".join(x for x,_ in cur),curcl)); cur=[]
-                                cur=[("-")]; curcl=cl
-                            i=j+2; continue
-                    if re.match(r"[A-Za-zÁÉÍÓÚáéíóúÑñÜü\-\.\?]", t):
-                        if curcl is not None and cl!=curcl and cur:
-                            tokens.append(("".join(x for x,_ in cur),curcl)); cur=[]
-                        cur.append((t,cl)); curcl=cl
-                    else:
-                        if cur: tokens.append(("".join(x for x,_ in cur),curcl)); cur=[]
-                        curcl=None
-                    i+=1
-                if cur: tokens.append(("".join(x for x,_ in cur),curcl))
-                if any(t[1] in ("B","R") for t in tokens):
-                    lines.append((pno+1,colname,tokens))
+WORD_CHAR = re.compile(r"[A-Za-zÁÉÍÓÚáéíóúÑñÜü]")
 
-# Now phrase-group: same class, space-delimited only
-def phrases(tokens):
-    out=[]; cur=[]; curcl=None
-    for (w,cl,delim) in [(t[0],t[1]," ") for t in tokens]:
-        pass
-    # rebuild with delim tracking — but we lost delim. Use simpler: join same-class adjacent
-    out=[]; cur=[]; curcl=None
-    for (w,cl) in tokens:
-        if cl==curcl and cur and re.fullmatch(r"[A-Za-zÁÉÍÓÚáéíóúÑñÜü\-]+", w):
-            cur.append(w)
+def build_annotated_lines():
+    raw = []
+    with pdfplumber.open(PDF) as pdf:
+        for pno in range(27, 48):
+            pg = pdf.pages[pno]; mid = pg.width / 2
+            for colname, colchars in [("L", [c for c in pg.chars if c["x0"] < mid]),
+                                       ("R", [c for c in pg.chars if c["x0"] >= mid])]:
+                lns = {}
+                for c in colchars: lns.setdefault(round(c["top"]), []).append(c)
+                for top in sorted(lns):
+                    cs = sorted(lns[top], key=lambda c: c["x0"])
+                    out = []; cur = []; lastcl = None
+                    def flush():
+                        nonlocal cur, lastcl
+                        if cur:
+                            w = "".join(ch for ch, _ in cur)
+                            tag = {"R": "<R>", "B": "<B>", "k": ""}[lastcl]
+                            out.append(f"{tag}{w}"); cur = []
+                    for c in cs:
+                        t = c["text"]
+                        if WORD_CHAR.match(t) or t in "-.?":
+                            cl = char_class(c)
+                            if lastcl is not None and cl != lastcl: flush()
+                            cur.append((t, cl)); lastcl = cl
+                        else:
+                            flush(); lastcl = None; out.append(t)
+                    flush()
+                    line = "".join(out)
+                    if "<R>" in line or "<B>" in line:
+                        raw.append((pno + 1, colname, line))
+    # join multi-line: if a line has unclosed '(', join exactly 1 next line (cap).
+    # (Uncapped joining caused mega-lines when a note like '(edo Sin.' lost its ')'.)
+    joined = []
+    i = 0
+    while i < len(raw):
+        pg, col, line = raw[i]
+        bal = line.count("(") - line.count(")")
+        if bal > 0 and i + 1 < len(raw):
+            npg, ncol, nline = raw[i + 1]
+            joined.append((pg, col, line + " " + nline))
+            i += 2
         else:
-            if cur: out.append((curcl," ".join(cur)))
-            cur=[w]; curcl=cl
-    if cur: out.append((curcl," ".join(cur)))
-    return out
+            joined.append((pg, col, line))
+            i += 1
+    return joined
 
-# Extract single-word pairs (no line-joining; single-line entries only)
-clean={}; multi=[]; ambig=[]
-verb_collision={"gara"}  # gara=we-are verb; context-dependent
-for (pg,col,tokens) in lines:
-    phs=phrases(tokens)
-    reds=[p for cl,p in phs if cl=="R"]
-    bolds=[p for cl,p in phs if cl=="B"]
-    if not reds or not bolds: continue
-    bold_single=[p for p in bolds if " " not in p]
-    red_single=[p for p in reds if " " not in p]
-    red_multi=[p for p in reds if " " in p]
-    btarget = bolds[0] if len(bolds)==1 else " ".join(bolds)
-    for rm in red_multi: multi.append((rm,btarget))
-    if len(bold_single)==1 and red_single:
-        tgt=bold_single[0]
-        for rs in red_single:
-            if rs.lower()==tgt.lower(): continue
-            if rs=="-" or len(rs)<2: continue
-            if not re.match(r"^[A-Za-zÁÉÍÓÚáéíóúÑñÜü\-]+$", rs): continue
-            if rs[0].isupper() or tgt[0].isupper(): continue
-            if rs.lower() in verb_collision: continue
-            clean.setdefault(rs.lower(),set()).add(tgt.lower())
-    elif len(bold_single)>1 and red_single:
-        for rs in red_single: ambig.append((rs,bold_single))
+WORD_UNIT = re.compile(r'(?:<([RB])>)?([A-Za-zÁÉÍÓÚáéíóúÑñÜü\-]+)')
 
-final={}; ambig2=[]
-for r,ts in clean.items():
-    if len(ts)>1: ambig2.append((r,sorted(ts)))
-    else: final[r]=next(iter(ts))
+def parse_line(line):
+    # 1: hyphen joiners — remove (<tag>-) AND the following tag, insert '-'
+    line = re.sub(r'\(<[RB]>-\)<([RB])>', '-', line)
+    line = re.sub(r'\(-\)<([RB])>', '-', line)
+    line = re.sub(r'\(<[RB]>-\)', '-', line)  # standalone (no following tag)
+    line = re.sub(r'\(-\)', '-', line)
+    # 2: article suffixes (single-letter parenthesized): (a), (o), (<R>a), (<R>-a)...
+    line = re.sub(r'\(<[RB]?>-?[aeouAEOU]\)', '', line)
+    # 3: remaining parens → comma (variant separator)
+    line = line.replace("(", ",").replace(")", ",")
+    # 4: '/' and ';' → comma
+    line = line.replace("/", ",").replace(";", ",")
+    # 5: split on commas
+    segments = [s.strip() for s in line.split(",")]
+    segments = [s for s in segments if s and s != "."]
+    reds = []; bolds = []
+    for seg in segments:
+        units = [(m.group(1) or "k", m.group(2)) for m in WORD_UNIT.finditer(seg)]
+        if not units: continue
+        phrases = []; cur_tag = units[0][0]; cur_words = [units[0][1]]
+        for tag, word in units[1:]:
+            if tag == cur_tag: cur_words.append(word)
+            else: phrases.append((cur_tag, " ".join(cur_words))); cur_tag = tag; cur_words = [word]
+        phrases.append((cur_tag, " ".join(cur_words)))
+        for tag, phrase in phrases:
+            if tag == "R": reds.append(phrase)
+            elif tag == "B": bolds.append(phrase)
+    return reds, bolds
 
-# idempotency check
-reds=set(final); bolds=set(final.values())
-overlap=reds & bolds
-print(f"# final single-word pairs: {len(final)}", file=sys.stderr)
-print(f"# multi-word (batch 2): {len(multi)}", file=sys.stderr)
-print(f"# ambiguous (skipped): {len(ambig2)}", file=sys.stderr)
-print(f"# entries w/ >1 bold target: {len(ambig)}", file=sys.stderr)
-print(f"# idempotency overlap (RED also BOLD): {len(overlap)}", file=sys.stderr)
-for w in sorted(overlap): print(f"   OVERLAP: {w}", file=sys.stderr)
-# verify fragments gone
-for bad in ["izar","hezur","bizkar","leiho","mahai","orratz","kanpaina","denda","saski","baloi","paper","gara","bertso","ipar","buru"]:
-    if bad in final: print(f"   STILL LEAKED: {bad} -> {final[bad]}", file=sys.stderr)
+def is_proper(raw_line, word_lower):
+    """Check if word appears capitalized in the raw source line."""
+    for m in re.finditer(r'<[RB]>([A-Za-zÁÉÍÓÚáéíóúÑñÜü\-]+)', raw_line):
+        if m.group(1).lower() == word_lower and m.group(1)[0].isupper():
+            return True
+    return False
 
-# categories for documentation
-import collections
-cats=collections.Counter()
-for r,t in final.items():
-    if r.startswith("x") and t.startswith(("tx","s")): cats["x-dialectal"]+=1
-    elif any(r.startswith(pr) for pr in ["a","e","i","o","u"]) and t!=r: cats["loanword/variant"]+=1
-    else: cats["other"]+=1
-print(f"\n# categories (rough): {dict(cats)}", file=sys.stderr)
+def main():
+    lines = build_annotated_lines()
+    pairs = {}; raw_source = {}; ambiguous = []
+    for (pg, col, line) in lines:
+        reds, bolds = parse_line(line)
+        if not reds or not bolds: continue
+        if len(bolds) == 1:
+            tgt = bolds[0]
+            for r in reds:
+                if r.lower() == tgt.lower() or len(r) < 2 or r == "-": continue
+                if r.lower() in VERB_COLLISION: continue
+                rl = r.lower()
+                pairs.setdefault(rl, set()).add(tgt.lower())
+                raw_source[rl] = f"p{pg}{col}|{line}"
+        elif len(reds) == len(bolds) == 1:
+            pairs.setdefault(reds[0].lower(), set()).add(bolds[0].lower())
+            raw_source[reds[0].lower()] = f"p{pg}{col}|{line}"
+        else:
+            ambiguous.append((reds, bolds, f"p{pg}{col}|{line}"))
 
-for r in sorted(final): print(f"{r}\t{final[r]}")
+    single = {}; multi = {}; ambig_target = {}
+    for r, ts in pairs.items():
+        if len(ts) > 1: ambig_target[r] = sorted(ts); continue
+        t = next(iter(ts))
+        # "multi-word" = red has a space OR bold has a space (spans multiple tokens)
+        if " " in r or " " in t: multi[r] = t
+        else: single[r] = t
+
+    # cross-ref batch 1
+    b1_out = subprocess.run(["node", "-e",
+        "import('./src/core/data/zalantza.js').then(m=>console.log(JSON.stringify(m.ZALANTZA)))"],
+        cwd="/home/xezpeleta/Dev/itzune/txukun", capture_output=True, text=True).stdout
+    b1 = json.loads(b1_out)
+    new_single = {r: t for r, t in single.items() if r not in b1}
+    dup_single = {r: t for r, t in single.items() if r in b1}
+
+    # categorize multi-word by type
+    # A: multi-red → single-bold (phrase→compound)
+    # B: multi-red → multi-bold (phrase→phrase)
+    # C: single-red → multi-bold (compound/word→phrase)
+    # D: hyphenated-red (contains -) → anything
+    types = {"A": {}, "B": {}, "C": {}, "D": {}}
+    proper_multi = set()
+    for r, t in multi.items():
+        src = raw_source.get(r, "")
+        if is_proper(src, r) or is_proper(src, t): proper_multi.add(r)
+        red_multi = " " in r; bold_multi = " " in t; hyph = "-" in r
+        if hyph: types["D"][r] = t
+        elif red_multi and not bold_multi: types["A"][r] = t
+        elif red_multi and bold_multi: types["B"][r] = t
+        elif not red_multi and bold_multi: types["C"][r] = t
+        else: types["D"][r] = t  # fallback
+
+    proper_single = {r for r in new_single if is_proper(raw_source.get(r, ""), r)}
+
+    print(f"# parsed lines: {len(lines)}", file=sys.stderr)
+    print(f"# single-word pairs: {len(single)} (in batch1: {len(dup_single)}, NEW: {len(new_single)})", file=sys.stderr)
+    print(f"# multi-word pairs: {len(multi)}", file=sys.stderr)
+    print(f"#   A (phrase→compound): {len(types['A'])}", file=sys.stderr)
+    print(f"#   B (phrase→phrase):   {len(types['B'])}", file=sys.stderr)
+    print(f"#   C (word→phrase):     {len(types['C'])}", file=sys.stderr)
+    print(f"#   D (hyphenated→...):  {len(types['D'])}", file=sys.stderr)
+    print(f"# ambiguous-target: {len(ambig_target)}", file=sys.stderr)
+    print(f"# ambiguous-structure: {len(ambiguous)}", file=sys.stderr)
+    print(f"# proper-noun (single): {len(proper_single)} | (multi): {len(proper_multi)}", file=sys.stderr)
+
+    # idempotency check on multi
+    reds_set = set(multi.keys()); bolds_set = set(multi.values())
+    overlap = reds_set & bolds_set
+    print(f"# multi idempotency overlap: {len(overlap)} {sorted(overlap) if overlap else ''}", file=sys.stderr)
+
+    print("# === TYPE A: phrase → compound (multi-red → single-bold) ===")
+    for r in sorted(types["A"]):
+        m = " [PROPER]" if r in proper_multi else ""
+        print(f"{r}\t{types['A'][r]}\t{raw_source.get(r,'')}{m}")
+    print("\n# === TYPE B: phrase → phrase (multi-red → multi-bold) ===")
+    for r in sorted(types["B"]):
+        m = " [PROPER]" if r in proper_multi else ""
+        print(f"{r}\t{types['B'][r]}\t{raw_source.get(r,'')}{m}")
+    print("\n# === TYPE C: word → phrase (single-red → multi-bold) ===")
+    for r in sorted(types["C"]):
+        m = " [PROPER]" if r in proper_multi else ""
+        print(f"{r}\t{types['C'][r]}\t{raw_source.get(r,'')}{m}")
+    print("\n# === TYPE D: hyphenated → ... ===")
+    for r in sorted(types["D"]):
+        m = " [PROPER]" if r in proper_multi else ""
+        print(f"{r}\t{types['D'][r]}\t{raw_source.get(r,'')}{m}")
+    print("\n# === NEW SINGLE-WORD (batch 1 gap) ===")
+    for r in sorted(new_single):
+        m = " [PROPER]" if r in proper_single else ""
+        print(f"{r}\t{new_single[r]}\t{raw_source.get(r,'')}{m}")
+
+if __name__ == "__main__":
+    main()

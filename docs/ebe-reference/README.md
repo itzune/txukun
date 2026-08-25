@@ -17,11 +17,45 @@ EBE eranskinaren PDFetik. Arau-motorraren (P1) eta golden case-en (P0.2)
 | `ebe-zal.txt` | Zalantza eragiten duten zenbait hitz | 27–48 (479–490) | Euskaltzaindiaren Hiztegiaren gomendioak: forma okerrak (gorriz) forma egokien kontra. XUXEN estiloko ordezkapen-zerrenda kanonikoa. |
 | `ebe-kal.txt` | Kalko desegoki nabarmen batzuk | 49–80 (501–510) | Erderatik ekarritako akats lexiko-semantikoak + morfosintaktikoak (izen-sintagma, aditza, perpausa). `*okerra → zuzena` formatuan. **Arau deterministen iturri nagusia.** |
 
+## Zalantza erauzketa — `extract-zalantza.py`
+
+`extract-zalantza.py` EBE PDFetik zalantza-bikoteak erauzten ditu
+pdfplumber kolore-analisiaz (RED=desgogokoa, BOLD=estandarra). Ikus
+`RESEARCH.md` §7.12 (batch 1) eta §7.13 (batch 2a, multi-hitza).
+
+**Gako-aurkikuntza (§7.13)**: testu soileko `ebe-zal.txt` ezin da erabili
+erauzketarako — kolorea da norabide-seinale bakarra. Gainera, `pdftotext -layout`-k
+komak eta puntuazioa galtzen ditu maiz, eta sarreren egitura (aldaerak, marratxo-
+konposatuak, lerro-anitzeko sarrerak) ezin da testu soiletik berreskuratu.
+
+### EBE sarreren egitura
+
+| Elementua | Esanahia | Adibidea |
+|---|---|---|
+| `/` | RED/BOLD bereizlea | `<R>abots / <B>ahots` |
+| `,` / `;` | aldaerak alde berean | `<R>jatsi, <R>jeitsi / <B>jaitsi` |
+| `(letra)` | artikulu-atizkia, kendu | `ikurriñ(a) → ikurrin` |
+| `(esapidea)` | alternatiba-taldea | `(haize girotu) aire girotu` |
+| `(-)` | marratxo-konposatua | `aire(-)garraio → aire-garraio` |
+
+### Erauzketako datu-fitxategiak (batch 2a)
+
+| Fitxategia | Edukia | Kopurua |
+|---|---|---|
+| `zalantza-new-singles.tsv` | Hitz bakuneko bikote berriak (batch 1-eko hutsunea) | 93 |
+| `zalantza-type-c.tsv` | Hitz bakuna → esapidea (multi-word helburua) | 19 |
+| `zalantza-phrases.tsv` | Multi-token RED esapideak (A+B+D motak) | 33 |
+| `zalantza-proper.tsv` | Izen bereziak (→ F5 gazetteer) | 35 |
+| `zalantza-ambiguous.tsv` | Anbiguoak (→ batch 3+, testuingurua behar) | 6 |
+
+Batch 1-eko 628 bikoteak `src/core/data/zalantza.js`-n daude.
+
 ## Oharrak
 
 - Testu-ateraketa `pdftotext -layout` bidezkoa da; taulen lerrokadura apur bat
   desitxura daiteke. Ziurtatzeko, kontsultatu PDF jatorrizkoa.
 - `ebe-zal.txt`-n gorria/beltz-lodia/beltz-mehea bereiztea (erabili/erabili ez /
-  bigarren mailakoa) ez da testu soilean ikusten; kontsultatu HTML/PDF jatorrizkoa
-  mailaketa zehatzeko.
-- Egiaztapen-egoera: 2026-08-25 — hiru atalak osorik jaitsi eta berrikusiak.
+  bigarren mailakoa) ez da testu soilean ikusten; **ezin da erabili erauzketarako** —
+  erabili `extract-zalantza.py` (pdfplumber kolore-analisia).
+- Egiaztapen-egoera: 2026-08-27 — hiru atalak osorik jaitsi eta berrikusiak;
+  zalantza erauzketa v6 bidez birprobagarria.

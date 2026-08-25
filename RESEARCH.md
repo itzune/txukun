@@ -1533,5 +1533,248 @@ measure zalantza coverage.
 - `src/core/rules/zalantza-words.js` — the rule (case-preserving substitution)
 - `tests/core/zalantza.test.mjs` — 30 unit tests
 - `docs/ebe-reference/extract-zalantza.py` — reproducible extraction script
-- `docs/ebe-reference/zalantza-multi.tsv` — 108 batch-2 multi-word phrases
-- `docs/ebe-reference/zalantza-ambiguous.tsv` — 5 skipped ambiguous pairs
+- `docs/ebe-reference/zalantza-multi.tsv` — 108 batch-2 multi-word phrases (SUPERSEDED — see §7.13)
+- `docs/ebe-reference/zalantza-ambiguous.tsv` — 5 skipped ambiguous pairs (SUPERSEDED — see §7.13)
+
+---
+
+## 7.13 Zalantza multi-hitza — erauzketa zuzena, egiaztapena, eta inplementazio-plana
+
+*Research conducted 2026-08-27 for P1 batch 2a (multi-word zalantza phrases).*
+
+### Atzeoharra — zergatik aztertu berriro
+
+Batch 1-ek (§7.12) 628 hitz bakuneko ordezkapen bidali zuen, baina 108
+esaldi-mailako "multi-word" sarrera `zalantza-multi.tsv`-n utzi zituen batch
+2-rako. TSV hori, ordea, **apolitsua zen**: batch 1-eko `final_extract.py`
+extraktorearen azpiproduktu bat zen, komak eta puntuazioa jaurtitzen zituena.
+Adibidez, `jatsi, jeitsi, jetxi → jaitsi` (hiru aldaera, komaz banatuta)
+"multi" gisa sailkatu zen, komak jaurti eta `jatsi jeitsi jetxi` "esapidea"
+sortu baitzuen. Horregatik, TSVko sarrera asko ez ziren benetako esaldi-mailako
+zalantzak, baizik eta komak botatako aldaera-zerrendak.
+
+TSV hori baztertu eta EBE PDFetik erauzketa berria egin behar da, sarreren
+egitura benetan ulertuz.
+
+### EBE sarreren egitura (grammar)
+
+EBE *Zalantza eragiten duten zenbait hitz* atalean (pp. 479–490), sarrera
+guztiek egitura bera dute:
+
+| Elementua | Esanahia | Adibidea |
+|---|---|---|
+| `/` | Desgogokoaren (RED) eta gomendatutakoaren (BOLD) arteko bereizlea | `<R>abots / <B>ahots` |
+| `,` edo `;` | Aldaerak banatzen ditu alde berean | `<R>jatsi, <R>jeitsi / <B>jaitsi` |
+| `(letra)` | Artikulu/morfema atzizkia — kendu | `ikurriñ(a) → ikurrin` |
+| `(esapidea)`| Alternatiba-taldea — edukia mantendu, parentesiak = aldaera-bereizle | `(haize girotu) aire girotu` |
+| `(-)` edo `(<kol>-)` | Marratxo-konposatua — marratxo bat da, ez hitz | `aire(-)garraio → aire-garraio` |
+| Lerro-anitz | Parentesi ireki bat 2 lerro bete ditzake | `(haize egokitu,\n haize girotu) aire girotu` |
+
+**Kolorea da norabide-seinale bakarra**: RED (CMYK 0,1,1,0) = desgogokoa, BOLD
+= estandarra, testu arrunta = bigarren mailakoa (ezikusi). `ebe-zal.txt`
+testu soilak kolorea galtzen du, eta beraz ezin da erabili erauzketarako.
+
+### Extraktorea (v6)
+
+`docs/ebe-reference/extract-zalantza.py` berridatzi da (v6) prozesu hau egiteko:
+
+1. **pdfplumber kolore-analisia** — hitz bakoitzaren CMYK balioa irakurri,
+   `<R>` (RED), `<B>` (BOLD), edo `` (arrunt) etiketa jarri.
+2. **Marratxo-konposatuak** — `(-)` / `(<R>-)` / `(<B>-)` marratxo bat da,
+   ez hitz bereizi. Char-korrontean marratxo bat bezala tratatu.
+3. **Artikulu-atizkiak** — `(a)`, `(e)`, `(o)`, `(u)` eta maiuskulazkoak kendu.
+4. **Parentesiak → komak** — `(` eta `)` komaz ordezkatu (aldaera-bereizlea).
+5. **`;` → `,`** — punttuak eta komak ezberdindu.
+6. **`/` → `,`** — alde-bereizlea komaz ordezkatu.
+7. **Lerro-anitz batzea** — lerro batek parentesi ireki bat badu, hurrengo lerroa
+   batu (ikus beheko bug-a).
+8. **Aditzi-kolisio iragazkia** — `gara` baztertu ("geltoki" = mailegua RED,
+   baina "gara" = "gu gara" aditza ere bai).
+
+### Bug kritikoa: mega-line joining
+
+Lehenengo bertsioek (v1–v5) lerro-anitzeko batze akats larri bat zuten:
+parentesi ireki bat duen lerro bat (adib. `(edo Sin.` — ohar bat, non `)` galdu
+den PDF erauzketan) hurrengo lerro guztiak irensteko zuen. Parentesi-balantze
+metatua zen (`count("(") > count(")")`), eta batuketa ez zen inoiz geratzen
+zamaketa-balantzea positibo mantendu arte. Emaitza: orrialde oso bat lerro
+bakar batean batu zen, eta ehunka sarrera galdu ziren (adib. `harri bitxi`,
+`kontutan hartu`, `labe handi`).
+
+**Konponbidea**: batuketa 1 lerrotara mugatu (ez metatu). Lerro batek
+parentesi irekia badu, hurrengo lerroa batu eta geratu — balantzea positibo
+badago ere. Honek mega-line saihesten du; galtutako sarrerak berreskuratzen
+dira; 1-2 sarrerako galerak onargarriak dira.
+
+### Emaitzak (v6)
+
+| Kategoria | Kopurua |
+|---|---|
+| Single-bold bikote (RED→BOLD bakarra) | 806 |
+| ─ Batch 1-ean daudenak | 626 |
+| ─ **Berrriak (batch 1-eko hutsunea)** | **116** (hauetatik ~18 izen bereziak) |
+| Multi-word bikoteak | 55 |
+| ─ A (esapidea→konposatua) | 11 (6 garbiak, 2 izen berezi, 3 artifaktu) |
+| ─ B (esapidea→esapidea) | 13 (denak garbiak) |
+| ─ C (hitza→esapidea, token bakuna RED) | 23 (17 garbiak, 6 izen berezi) |
+| ─ D (marratxoduna→...) | 8 (denak garbiak) |
+| Anbiguo-helburua (RED→BOLD₁|BOLD₂) | 6 |
+| Anbiguo-egitura (RED→helburu anitz) | 123 |
+| Izen bereziak (single) | 18 |
+| Izen bereziak (multi) | 8 |
+| Idempotentzia-overlap (multi) | 0 ✓ |
+
+**Gako-aurkikuntza**: batch 1-ek **~116 sarrera galdu zituen** komak-botatze
+bug-aren ondorioz. `jatsi→jaitsi`, `ikurriñ→ikurrin`, `enpresari→enpresaburu`,
+`eskubi→eskuin`, `rugby→errugbi`, `scout→eskaut` eta antzekoak "multi"
+sartu ziren komak jaurti zituelako. Hauek hitz bakuneko bikote garbiak dira.
+
+### Segurtasun-egiaztapenak
+
+#### 1. Idempotentzia (X→Y→Z katearriska)
+
+Iterative re-lint motorrak gainzuzenketak sor ditzake X→Y eta Y→Z kateak
+baldin eta RED bat BOLD baten berdina bada. Bi kontrol egin dira:
+
+- **Single-word**: RED guztiak vs BOLD guztiak (batch 1 + berriak). Emaitza:
+  **2 self-mapping** (`bizkaiko golkoa→bizkaiko golkoa`, `mota→mota` — EBE
+  datu-akatsak, ez kate arriskutsuak). Arloaren `replacement !== tok.text`
+  guard-ak hauek automatikoki saltatzen ditu. **0 kate erreal**.
+- **Cross-chain** (berriak vs batch 1): **0 arrisku** — ez dago bikote
+  berririk non RED bat batch 1-eko BOLD bat den.
+- **Multi-word**: **0 overlap** ✓
+
+#### 2. Aditzi-kolisioa (gara arazoa)
+
+`gara` baztertuta dago: polisemikoa da ("geltoki" = frantsesezko mailegua
+RED, baina "gara" = "gu gara" aditza ere bai). Testuingururik gabe hitz-arau
+batean arriskutsuegia da. Bikote berrietan ez dago beste aditz-kolisionik
+(beharintzat ez da `da`, `dira`, `naiz` etab. bezalako aditz laguntzaile
+frekuenterik aurkitu).
+
+#### 3. Izen berezien detekzioa
+
+Izen bereziek (leku-izenak, izen biblikoak) maiuskula espezifikoa dute eta
+F5 gazetteer-era atzeratzen dira (ez zalantza lexikoa). 18 single + 8 multi =
+26 izen berezi. Adibideak: `Adan→Adam`, `Ernio→Hernio`, `Deba Behea→Debabarrena`,
+`Donejakue→Donejakue bidea`, `Haizkorri→Aizkorri`.
+
+### Inplementazio-plana
+
+#### 1. fasea: zalantza.js osatu (~115 sarrera berri)
+
+Bi motatako sarrerak `zalantza.js`-ra gehitu (kode-aldaketarik gabe):
+
+- **~98 hitz bakuneko berriak** (batch 1-eko hutsunea: `jatsi→jaitsi`,
+  `eskubi→eskuin`, `rugby→errugbi`, `scout→eskaut`, `enpresari→enpresaburu`...)
+  izen bereziak (18) eta aditz-kolisioak (0) salbuetsita.
+- **17 Type C bikote** (hitza→esapidea): `abioneta→hegazkin txiki`,
+  `egunon→egun on`, `eskerrikasko→eskerrik asko`, `ingurutren→aldiriko tren`...
+  Hauek **kode-aldaketarik gabe** funtzionatzen dute: `matchCase()` funtzioak
+  jada hitz anitzeko helburuak maneiatzen ditu (`target.toLowerCase()` /
+  `target.toUpperCase()` / Title-case guztiek stringak espazioekin maneiatzen
+dituzte).
+
+#### 2. fasea: zalantza-phrases arau berria (~31 bikote)
+
+Arau berri bat sortu behar da **multi-token RED** duten bikoteentzat
+(Type A + B + D + marratxodun-singleak):
+
+- **Type A** (6 garbiak): `agi denez→agidanez`, `etxeko andre→etxekoandre`,
+  `harri bitxi→harribitxi`, `itsas korronte→itsaslaster`, `ipar ekialde→ipar-ekialde`...
+- **Type B** (13): `haize girotu→aire girotu`, `asper egin→asper-asper egin`,
+  `kontutan hartu→kontuan hartu`, `kosta ala kosta→kosta ahala kosta`,
+  `labe handi→labe garai`...
+- **Type D** (8): `aire-garraio→aireko garraio`, `big-bang→big bang`,
+  `bular-angina→bularreko angina`, `elektro-tresna→tresna elektriko`...
+- **Marratxodun singleak** (4): `bana-bana→banan-banan`, `bideo-kasete→bideokasete`...
+- **Artifaktu zuzenduak** (2): `autonomi elkarte→autonomia-elkarte`,
+  `merkatal zentro→merkataritza-zentro` (helburuak trunkatuta zeuden;
+  eskuz zuzendu).
+
+**Fitxategiak**:
+- `src/core/data/zalantza-phrases.js` — ~31 bikote
+- `src/core/rules/zalantza-phrases.js` — sliding-window araua
+
+#### 3. fasea: atzerapenak
+
+- **26 izen bereziak** → F5 gazetteer (`src/core/dictionary.js`)
+- **129 anbiguoak** (6 helburu + 123 egitura) → batch 3+ (testuingurua/POS
+  beharrezkoa: `asanblada→batzar|biltzar`, `espresatu→adierazi|aditzera eman`)
+
+### Matching-mekanismoaren diseinua
+
+#### Arazoa: marratxodun formak token anitz dira
+
+Tokenizatzaileak (`document.js`) `\p{P}+` erabiltzen du puntuaziorako,
+marratxoa barne. Beraz, `aire-garraio` ez da token bat; hiru dira:
+`[word:aire, punct:-, word:garraio]`. Hau da, hitz bakuneko `zalantza-words.js`
+arauak (zeinak `ZALANTZA[tok.text]` begiratzen duen token bakun batean) ezin
+du marratxodunik maneiatu.
+
+#### Konponbidea: sliding-window token-sekuentzia bat etortzea
+
+```
+For each RED phrase in ZALANTZA_PHRASES:
+  Tokenize RED phrase using same tokenize() from document.js
+  Filter to non-whitespace tokens → redTokens[]
+  For each starting position i in doc.tokens (non-whitespace):
+    If redTokens matches content[i..i+N]:
+      Span = {start: content[i].start, end: content[i+N-1].end}
+      Replacement = matchCase(content[i].text, boldTarget)
+      If replacement !== sourceText: emit lint
+```
+
+**Klabea**: RED esapidia tokenizatzean, tokenizatzaile berdina erabiltzen da
+(dokumentuaren tokenizatzailea). Beraz, `aire-garraio` RED esapidea
+`[word:aire, punct:-, word:garraio]` bihurtzen da — dokumentuaren token
+sekuentziaren konparagarria. Ez dago kasuren bereizketarik.
+
+**Konplexutasuna**: O(N × M × K) non N = edukiko tokenak, M = esapideak (~31),
+K = esapide luzeena (4 token). Testu tipikoetarako arbuiagarria.
+
+#### Kasua mantentzea
+
+`matchCase(source, target)` funtzioak lehen tokenaren kasua erabiltzen du:
+- lower → `target.toLowerCase()` (adib. `haize girotu` → `aire girotu`)
+- Title → `target[0].toUpperCase() + target.slice(1).toLowerCase()` (adib. `Haize girotu` → `Aire girotu`)
+- UPPER → `target.toUpperCase()` (adib. `HAIZE GIROTU` → `AIRE GIROTU`)
+- mixed → skip (izen berezien guard-a)
+
+Honek funtzionatzen du esapidetan lehen hitza bakarrik begiratzen delako;
+geratutako hitzek helburuaren kasu kanonikoa jarraitzen dute.
+
+#### Idempotentzia (motor iterative)
+
+Motorrak arau bat aplikatzen du pass-ero, berriro tokenizatu, eta berriro
+lint. Baldin eta esapide bat ordezkatzen bada (adib. `haize girotu` →
+`aire girotu`), hurrengo pass-ean `aire girotu` ez da RED esapidea (ez dago
+ZALANTZA_PHRASES-en), ber ez da berriro ordezkatuko. **0 idempotentzia-overlap**
+egiaztatuta ✓.
+
+### Type C — kode-aldaketarik gabe
+
+**Aurkikuntza gakoa**: Type C bikoteak (hitza→esapidea, adib.
+`abioneta→hegazkin txiki`) ez dute arau berririk behar. `zalantza-words.js`-ren
+`matchCase()` funtzioak jada maneiatzen ditu hitz anitzeko helburuak, eta
+`replaceWith("hegazkin txiki")` string bat espazioekin ondo funtzionatzen du.
+Bikote hauek `zalantza.js`-n gehitzen dira balio gisa (gako bakuna, balio
+hitz anitzekoa). Arauaren `lint()` funtzioak `ZALANTZA[lower]` begiratzen du
+— gakoa hitz bakuna da — eta `matchCase(tok.text, target)` aplikatzen du,
+non target hitz anitzekoa izan daitekeena. **Funtzionatzen du**.
+
+Honek inplementazioa nabarmen sinplifikatzen du: soilik ~31 multi-token RED
+bikoteek behar dute arau berria. ~17 Type C + ~98 single berriak zuzenean
+`zalantza.js`-ra doaz.
+
+### Laburpena
+
+| Fasea | Sarrera kopurua | Kode berria? |
+|---|---|---|
+| 1: zalantza.js osatu | ~115 sarrera berri | Ez (datuak soilik) |
+| 2: zalantza-phrases araua | ~31 bikote | Bai (`zalantza-phrases.js` + `.js` data) |
+| 3: atzerapenak | 26 izen berezi + 129 anbiguo | F5 / batch 3+ |
+
+**Total**: ~146 bikote berri gehituko dira (batch 1-en 628 + 146 = ~774
+guztira). 0 idempotentzia-arrisku, 0 aditzi-kolisio berri, 0 erregresio
+esperoa (arau berria priority 46-n, single-word-aren atzetik).
