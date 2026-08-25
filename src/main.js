@@ -105,6 +105,14 @@ function updateStats({ words, chars }) {
 function onErrorClick(errorId) {
   const card = document.querySelector(`.card[data-error-id="${errorId}"]`);
   if (card) {
+    // On mobile the suggestions panel is a closed drawer — open it so the
+    // tapped card is visible. (Closed = translateX(100%), still in the DOM,
+    // so the card exists; we just need to slide it in.)
+    if (window.matchMedia('(max-width: 900px)').matches) {
+      const app = document.getElementById('app');
+      app.classList.remove('left-open');
+      app.classList.add('right-open');
+    }
     // Expand + scroll into view in the suggestions panel
     document.querySelectorAll('.card').forEach((c) => c.classList.remove('active'));
     card.classList.add('active');
