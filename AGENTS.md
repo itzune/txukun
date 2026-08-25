@@ -12,17 +12,25 @@ It works on any Basque text, and is also well-suited to cleaning up ASR (speech-
 
 It's part of the [Itzune](https://itzune.eus) ecosystem of Basque language AI tools.
 
-- **Repo**: https://github.com/itzune/txukun
-- **Site**: https://itzune.eus/txukun/
-- **Model**: https://huggingface.co/itzune/txukun-cap-punct-eu
-- **Original model**: https://huggingface.co/HiTZ/cap-punct-eu
+### Product vs. models — important distinction
+
+**This repo is the *product*** — a generic Basque writing assistant: grammar, spelling, capitalization, punctuation, and AI-powered suggestions. The product is bigger than any single model. It orchestrates three neural models, a deterministic rule engine (EBE-grounded), a 160k-word dictionary, and the UI into one pipeline. Its capabilities are not bounded by any one model's training data or scope.
+
+**The models on HuggingFace are *components*** — each is a standalone trained model with its own origin, scope, and limitations. The product loads them lazily as needed. For example, the cap-punct model was trained on ASR-style lowercase text, but the product accepts normally-capitalized text too (GECToR and the rule engine handle those cases the cap-punct model wasn't trained on).
+
+- **Product (this repo)**: https://github.com/itzune/txukun · https://itzune.eus/txukun/
+- **Models (HuggingFace components)**:
+  - [`itzune/txukun-cap-punct-eu`](https://huggingface.co/itzune/txukun-cap-punct-eu) — capitalization & punctuation (fine-tune of [`HiTZ/cap-punct-eu`](https://huggingface.co/HiTZ/cap-punct-eu))
+  - [`itzune/berteus-onnx`](https://huggingface.co/itzune/berteus-onnx) — spell-check re-ranking (ONNX int4 of [BERTeus](https://huggingface.co/ixa-ehu/berteus-base-cased))
+  - [`itzune/gector-eus-onnx`](https://huggingface.co/itzune/gector-eus-onnx) — grammar correction (GECToR on RoBERTa-eus)
 
 ## Tech Stack
 
 - **Build**: Vite 5
 - **Runtime**: Vanilla JavaScript (no framework)
 - **Inference**: Transformers.js (@huggingface/transformers) + ONNX Runtime Web WASM
-- **Model**: MarianMT (6 encoder + 6 decoder, d_model=512, SentencePiece tokenizer)
+- **Models (3)**: MarianMT cap-punct (q8, ~77MB), BERTeus re-ranker (int4, 85MB), GECToR grammar (int4, ~85MB) — all loaded from HuggingFace Hub, lazy-loaded
+- **Rule engine**: Deterministic, EBE-grounded (Euskaltzaindia's *Euskararen Aholkularia*) — runs with or without the neural models ("Txukun Lite" mode)
 - **Deploy**: GitHub Pages at `/txukun/` sub-path (base URL matters)
 - **Design**: Itzune design system (dark theme, cosmic-void gradient, JetBrains Mono, sky `#4bb8e8` accents)
 
@@ -66,7 +74,9 @@ The dev server runs on `http://localhost:3000/txukun/`. The base path `/txukun/`
 
 ## Model Loading
 
-The model is loaded from HuggingFace Hub using Transformers.js:
+The product uses **three neural models**, each loaded lazily from HuggingFace Hub via Transformers.js. The cap-punct model is detailed below as the canonical example; the other two follow the same pattern.
+
+### Model 1 — cap-punct (MarianMT), `src/models.js`
 
 ```javascript
 const { pipeline } = await import('@huggingface/transformers');
@@ -85,6 +95,30 @@ const correctorPipeline = await pipeline(
 - Transformers.js dtype mapping: `'q8'` → `_quantized.onnx` (int8, what `src/models.js` uses), `'fp32'` → `.onnx` (full precision). `'fp16'` 404s (no such files on Hub).
 - q8 and fp32 produce identical cap-punct accuracy (verified 2026-08-25, 33-case golden suite)
 - `subfolder: ''` is critical — TF.js defaults to `onnx/` subfolder
+
+### Model 2 — BERTeus (spell re-ranking), `src/bert-rerank.js`
+
+```javascript
+const { AutoModel } = await import('@huggingface/transformers');
+const model = await AutoModel.from_pretrained('itzune/berteus-onnx', {
+  dtype: 'q4',   // int4 quantized (85MB encoder + 74MB f16 embeddings)
+  device: 'wasm',
+});
+```
+
+- Used for masked-embedding candidate re-ranking when a spell error has ≥2 candidates.
+- Lazy-loaded only on first spell error with multiple candidates.
+
+### Model 3 — GECToR (grammar correction), `src/gector.js`
+
+- HF repo: `itzune/gector-eus-onnx` (`onnx/model_q4.onnx`, 85MB int4 + tokenizer/vocab files).
+- Loaded via custom ONNX session (edit-based $KEEP/$DELETE/$REPLACE/$APPEND, up to 5 iterative passes).
+- Has a **detect head** (P(INCORRECT) per token) that powers the input heatmap, separate from the correction (label) head.
+- Lazy-loaded in the background after the main pipeline initializes.
+
+### Graceful degradation
+
+All three models degrade gracefully — if any model fails to load, the pipeline falls back to the previous tier. The **rule engine runs independently** ("Txukun Lite" mode): basic capitalization, punctuation, and comma fixes work even before any neural model loads.
 
 ## i18n
 
@@ -124,6 +158,7 @@ Itzune projects follow Basque-themed naming:
 ## Known Constraints
 
 - ONNX Runtime Web WASM supports up to IR version 8
-- Model output contains MarianMT special tokens (`<unk>`, `</s>`, `<s>`, `<pad>`) — must be cleaned in `correctText()`
-- Float16 quantization may have minor accuracy impact vs fp32
-- No spell checking or grammar correction yet (Phase 2)
+- MarianMT (cap-punct) output contains special tokens (`<unk>`, `</s>`, `<s>`, `<pad>`) — must be cleaned via `cleanModelOutput()` (`src/core/clean-output.js`)
+- q8 quantization is **lossless** for cap-punct (q8 = fp32 on the golden suite). The Hub has no fp16 files; `'fp16'` dtype 404s. int4 (BERTeus, GECToR) is a lossy but validated quantization.
+- The cap-punct model was trained on ASR-style lowercase input — it has a ~82% ceiling on general text. The rule engine closes the gap (lifts strict accuracy 81.8%→100%). See `tests/cap-punct/BASELINE.md`.
+- No EBE calque/zalantza rules yet (P1 next step — see `TODO.md` and `RESEARCH.md` §7.11)
