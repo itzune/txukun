@@ -298,6 +298,7 @@ function buildContext(plainText, from) {
 import { correctCapPunct, isModelReady, isSpellReady } from './models.js';
 import { checkSpelling, getBestCorrection, checkWord } from './spell.js';
 import { correctGrammar, detectGrammar, isGectorReady, initGector } from './gector.js';
+import { diffWords, isCasePunctOnly } from './core/diff.js';
 
 let errCounter = 0;
 const nextId = () => `e${++errCounter}`;
@@ -476,7 +477,9 @@ async function detectSpellingErrors(text) {
 async function detectCapPunctErrors(text, headingRanges = []) {
   const errors = [];
   try {
-    if (!isModelReady()) return errors;
+    // NOTE: do NOT bail when the model isn't loaded — correctCapPunct() takes
+    // a rules-only "Txukun Lite" path (no model inference) so basic cap+punct+
+    // comma fixes still surface as cards before/without the neural model.
     const { corrected, matchRate, segmentRates } = await correctCapPunct(text);
     if (!corrected || corrected === text) return errors;
 
@@ -526,128 +529,8 @@ function capPunctTitle(from, to) {
   return 'Puntuazioa';
 }
 
-// ── Word-level LCS diff ──────────────────────────────────────────────
-//
-// Tokenizes both texts into words (with whitespace preserved as separate
-// tokens), runs an LCS alignment, and emits {type, fromText, toText,
-// fromOffset, toOffset} for each replace/insert/delete. Matches carry
-// the original character offsets so suggestions map back to the source.
-
-function tokenizeWithOffsets(text) {
-  const tokens = [];
-  const re = /(\s+|\S+)/g;
-  let m;
-  while ((m = re.exec(text)) !== null) {
-    tokens.push({ text: m[0], from: m.index, to: m.index + m[0].length });
-  }
-  return tokens;
-}
-
-function diffWords(originalText, correctedText) {
-  const a = tokenizeWithOffsets(originalText);
-  const b = tokenizeWithOffsets(correctedText);
-  // Only compare non-whitespace tokens for alignment, but we operate on
-  // full token arrays so offsets stay valid.
-  const aWords = a.map((t, i) => ({ t, i })).filter((x) => /\S/.test(x.t.text));
-  const bWords = b.map((t, i) => ({ t, i })).filter((x) => /\S/.test(x.t.text));
-
-  const n = aWords.length;
-  const mm = bWords.length;
-
-  // LCS DP table
-  const dp = Array.from({ length: n + 1 }, () => new Int32Array(mm + 1));
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = mm - 1; j >= 0; j--) {
-      dp[i][j] =
-        aWords[i].t.text.toLowerCase() === bWords[j].t.text.toLowerCase()
-          ? dp[i + 1][j + 1] + 1
-          : Math.max(dp[i + 1][j], dp[i][j + 1]);
-    }
-  }
-
-  // Backtrack to build the edit script
-  const changes = [];
-  let i = 0,
-    j = 0;
-  while (i < n && j < mm) {
-    if (aWords[i].t.text.toLowerCase() === bWords[j].t.text.toLowerCase()) {
-      // Words match case-insensitively. If the actual text differs
-      // (e.g. "nire" → "Nire"), emit a replace so case-only changes
-      // are not silently dropped.
-      if (aWords[i].t.text !== bWords[j].t.text) {
-        changes.push({
-          type: 'replace',
-          fromText: aWords[i].t.text,
-          toText: bWords[j].t.text,
-          fromOffset: aWords[i].t.from,
-          toOffset: aWords[i].t.to,
-        });
-      }
-      i++;
-      j++;
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      // aWords[i] deleted (or replaced if bWords[j] also consumed next)
-      if (j < mm && dp[i + 1][j + 1] < dp[i + 1][j]) {
-        // pure delete
-        changes.push({
-          type: 'delete',
-          fromText: aWords[i].t.text,
-          toText: '',
-          fromOffset: aWords[i].t.from,
-          toOffset: aWords[i].t.to,
-        });
-      } else {
-        // replace aWords[i] with bWords[j]
-        changes.push({
-          type: 'replace',
-          fromText: aWords[i].t.text,
-          toText: bWords[j].t.text,
-          fromOffset: aWords[i].t.from,
-          toOffset: aWords[i].t.to,
-        });
-        j++;
-      }
-      i++;
-    } else {
-      // bWords[j] inserted
-      changes.push({
-        type: 'insert',
-        fromText: '',
-        toText: bWords[j].t.text,
-        fromOffset: aWords[i] ? aWords[i].t.from : originalText.length,
-        toOffset: aWords[i] ? aWords[i].t.from : originalText.length,
-      });
-      j++;
-    }
-  }
-  while (j < mm) {
-    changes.push({
-      type: 'insert',
-      fromText: '',
-      toText: bWords[j].t.text,
-      fromOffset: originalText.length,
-      toOffset: originalText.length,
-    });
-    j++;
-  }
-  while (i < n) {
-    changes.push({
-      type: 'delete',
-      fromText: aWords[i].t.text,
-      toText: '',
-      fromOffset: aWords[i].t.from,
-      toOffset: aWords[i].t.to,
-    });
-    i++;
-  }
-  return changes;
-}
-
-function isCasePunctOnly(a, b) {
-  if (a === b) return false;
-  const strip = (s) => s.replace(/[^\p{L}]/gu, '').toLowerCase();
-  return strip(a) === strip(b) && strip(a).length > 0;
-}
+// ── Word-level LCS diff — extracted to src/core/diff.js (P1)
+// (pure, Node-testable; see tests/core/txukun-lite.test.mjs)
 
 // ── Correction + cap-punct merge ───────────────────────────────────
 //

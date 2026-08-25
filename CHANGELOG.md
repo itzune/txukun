@@ -4,6 +4,33 @@ All notable changes to Txukun will be documented in this file.
 
 ---
 
+## [Unreleased] — Txukun Lite wired to UI
+
+### Fixed
+- **Txukun Lite was unreachable from the UI**: `detectCapPunctErrors()`
+  (`src/analyze.js`) bailed early with `if (!isModelReady()) return errors;`
+  before reaching `correctCapPunct()`, which has a rules-only path for when the
+  model isn't loaded. Result: users got **zero** cap-punct suggestions (no comma,
+  capitalization, or punctuation fixes) while the model was still downloading or
+  if it failed to load — even though the rule engine could provide them. Removed
+  the early return; `correctCapPunct()` already guards the model-not-loaded case
+  internally and takes the cheap rules-only path (no model inference). Rule fixes
+  now surface as blue `cappunct` cards before/without the neural model.
+
+### Added
+- `src/core/diff.js` — extracted the pure word-level LCS diff pipeline
+  (`tokenizeWithOffsets`, `diffWords`, `isCasePunctOnly`) out of `analyze.js` so
+  it's unit-testable in Node without browser-only model deps. Same rationale as
+  `src/core/clean-output.js` (P0.3). `analyze.js` re-imports from it (no behavior
+  change to the model-loaded path).
+- `tests/core/txukun-lite.test.mjs` — 18 tests confirming rule fixes surface as
+  cap-punct cards without the model (simulates `detectCapPunctErrors`' core:
+  `runRules` → `diffWords` → `isCasePunctOnly` → errors). Covers c060, c061,
+  interrogative `?`, empty/already-correct guards, and the `isCasePunctOnly`
+  word-substitution guard.
+
+---
+
 ## [2.0.0] — 3-model architecture + Grammarly-style editor + rule engine — 2026-08-25
 
 Txukun 2.0 is a ground-up rebuild. The app moves from a simple two-column

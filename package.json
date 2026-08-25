@@ -15,7 +15,7 @@
     "deploy": "npm run build && gh-pages -d dist",
     "test:cap-punct": "node tests/cap-punct/eval.mjs",
     "test:cap-punct:check": "node tests/cap-punct/eval.mjs --check",
-    "test:core": "node tests/core/rule-engine.test.mjs",
+    "test:core": "node tests/core/rule-engine.test.mjs && node tests/core/txukun-lite.test.mjs",
     "test:spell": "node tests/gec-benchmark/eval-tier1.mjs",
     "test": "npm run test:core && npm run test:cap-punct:check && npm run test:spell"
   },
