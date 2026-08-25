@@ -148,6 +148,44 @@ Jatorria: `XUXEN_ISSUES.md` eta `ISSUE_LOG.md`.
 - [ ] N-gram naturalness geruza: euskarako publiko-corpusetatik sortutako trigram/4-gram egiaztatzaile arina, arauen eta eredu neuronalaren artean (LanguageTool-en n-gram rules ereduan)
 - [ ] Arau-autoreentzako web UI sinplea (LanguageTool eredua), komunitateari arauak gehitzen uzteko kode idatzi gabe
 
+### P4 — Aditu-kontsulta (2026-08): arkitektura neuronalaren berrantolaketa
+
+> Kanpoko aditu baten kontsulta batek 8 gomendio eman zituen 3-ereduko pipelinearen
+> emaitzetan oinarrituta: **220 kasuko ebaluazioan %45.5 orokorra**; ortografia
+> gain-zuzenketak gain-zuzenketa guztien **%75** dira (Hunspell da erro-kausa:
+> ezezagun guztia markatzen du); errore errealak **%10** (Elhuyar datuek zero
+> errore-erreal adibide); missing/extra hitzak **%0**; esaldi multi-akats **%20**.
+> Jatorrizko kontsulta-dokumentua ez da repoan gordetzen; ideiak hemen laburbiltzen
+> dira. **Neural-training lanak dira (ML jakinduria behar dute), P1 arau-geruzarekiko ortogonalak.**
+
+**Argipen kritikoa — "GECToR bateratua" (unified GECToR) bi esanahi:**
+
+1. ✅ **EGINDA** — GECToR barruko *detect + correct* buruak bateratuta (eredu batek
+   biak: label head + detect head). `gector-eus-onnx` (cache tag `gector-unified-v3`)
+   jada hau da. `GEC_RESEARCH_TIER3.md`-k dokumentatzen du.
+2. ❌ **EZ EGINDA** — GECToR bat *hiru atazatarako* (gramatika + ortografia +
+   maiuskulak/puntuazioa), MarianMT + Hunspell deuseztatuz. Egungo GECToR-ren
+   entrenamendu-datuak **gramatika-soilak** dira (Elhuyar R1-R4 morfologia
+   sintetikoa; zero ortografia/puntuazio bikote). Beraz egungo ereduek ezin
+   dituzte ataza hauek egin — hau da 3-ereduko arkitektura existitzen den arrazoia.
+
+**Gomendioak (training vs ingeniaritza):**
+
+| # | Gomendioa | Mota | Oharrak |
+|---|---|---|---|
+| 1 | GECToR bakarra hiru atazatarako; deuseztatu MarianMT+Hunspell; ezabatu merge logika | Training | Goiko 2. esanahia; datu-augmentazioa behar du (#4) |
+| 2 | Ordeztu Hunspell detektorea GECToR detect buruarekin | Training | #1-en aurrebaldintza; gain-zuzenketen %75 konpontzen du |
+| 3 | Fine-tune 125M encoder errore errealak detektatzeko (7B LLM gabe) | Training | 125M-ak raw-ean %33 huts egiten du OOD delako, ez arkitekturagatik |
+| 4 | Datu-augmentazioa Latxa v2-tik (missing/extra, proper-noun `$KEEP`, typo fonetikoak) | Training | #1/#2/#3-ren aurrebaldintza |
+| 5 | Iterative correction (2-3 GECToR pass) esaldi multi-akatsetarako | Ingeniaritza | `gector.js`-k jada `MAX_ITERATIONS=5` du; partzialki eginda, balidatu/tune |
+| 6 | GECToR mantendu (ez seq2seq) — Grammarly-moduko UX-rako seguruagoa | Erabakia | `GEC_RESEARCH_TIER3.md`-k baieztatuta |
+| 7 | Zabaldu ebaluazioa 1.500-2.000 kasura | Ingeniaritza | P0.2-ra lotuta; LLM lokalak errore sintetikoak sor ditzake |
+| 8 | Lehentasun-ordena: Datuak → Entrenatu GECToR bateratua → Deuseztatu mergeak → Iterative | Estrategia | — |
+
+**Egungo pisu banaketa:** erabilgarria ML baliabideak daudenean. Bitartean, P1
+arau-geruza (EBE oinarritua, determinista) ez du horren menpekotasunik — aurrera
+jarraitzen du bere kabuz. Ikus `RESEARCH.md` §7.11 ASR-niche arrisku-analisia.
+
 ### P4 atzeratua — Hitz-ordenaren detekzioa (estilo-iradokizuna, ez akatsa)
 
 > Niche baina baliotsua. Mantendu aparkatuta P0–P3 amaitu arte.
