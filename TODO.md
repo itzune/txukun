@@ -128,6 +128,7 @@ Jatorria: `XUXEN_ISSUES.md` eta `ISSUE_LOG.md`.
 - [ ] Validatzailea: hiztegitik kanpoko hitzak sortzen dituzten eredu-zuzenketa baztertu
 - [ ] Konfiantza-bideraketa: arauak = zuzenketa isila; neural = iradokizun-txartela
 - [ ] Konfiantza-mailatan banatutako iradokizun-txartelak: "akatsa" vs "hobe izan liteke" (Grammarly-ren correctness/clarity bereizketa)
+- [ ] **Berria estilo-iradokizunak** (ikus `RESEARCH.md` §7.14): etorkizuneko "style suggestions" geruzarako materiala. **Murrizketa gogorrak** — Berriaren Estilo Liburua all-rights-reserved da (CC-rik ez), eta bere zalantza `*` markak editorialak dira ez normatiboak ("estilo-liburua, ez gramatika-liburua"). Beraz: (1) **ezin da Berrian oinarritutako datu-base eratorria masiboki banatu**; (2) baliozkoa da soilik **eskuzko curazio txikia** (20-30 sarrera handi, atribuituta `source: "Berria (consulted)"`, `LintKind.Style` etiketarekin, baztergarriak); (3) Berria **garapen-erreferentzia** gisa beti baliozkoa da (EBEtik eratorritako arauak gurutzatzeko). F5 gazetteer-erako iturriak EBE/Euskaltzaindiara bideratu, ez Berriara
 
 ---
 

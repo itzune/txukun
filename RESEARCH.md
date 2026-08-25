@@ -1924,50 +1924,128 @@ errepertoriorako, baina Azken aldaketak-ek erakusten du nola eguneratzen
 den hiztegia (zer sarrera gehitu diren azkenaldian) — hau baliagarria da
 zalantza-hiztegia mantentzeko eta fresko edukitzeko.
 
-### Sinteesia — Berria vs. EBE
+### Lizentzia eta autore-posizioa — egiaztapen kritikoa
+
+Atal hau ikerketaren azken pausuan egiaztatu da (2026-08-27, "Zer den/Nola
+erabili" orria bisitatuta) eta aurreko atalen mapaketaren markoa berridatzi
+du. Bi aurkikuntza kritiko:
+
+**1. Lizentzia: gutun eskubide guztiak erreserbatuta (all-rights-reserved).**
+Berriaren Estilo Liburuko orriek copyright ohar arrunta daramate:
+
+> © Berria.eus - Euskal Editorea SM • Martin Ugalde kultur parkea, Andoain 20140
+
+Ez dago Creative Commons markarik, berrerabilera-baimenik, ez CC-BY/CC0
+adierazpenik inon. Beraz, berariazko baimenik gabe, **ezin da Berriaren
+Estilo Liburuan oinarritutako datu-base eratorria osorik banatu**. Baina
+gertaera linguistiko indibidualak ("X toponimoaren euskal izena Y da") ez
+dira copyright-ableak; babestuta dagoena hautatutako/ateratutako *datu-base
+konpilatua* da. Honek hiru erabilera-modu bereizten ditu:
+
+- ✅ **Garapen-erreferentzia** — garatzaile batek Berria irakurtzea EBEtik
+  eratorritako arauak gurutzatzeko eta egiaztatzeko = bidezko erabilera
+  (fair use), banaketarik gabe.
+- ✅ **Curazio eskuzko txikia** — garatzaile batek Berria Hiztegia irakurri,
+  20 balio handiko hobespen editorial eskuz aukeratu, EBE-oinarritutako
+  arau-sarrera gisa idatzi `style` banderarekin eta `source: "Berria
+  (consulted)"` oharrarekin. Gertaerak, eskuz aukeratuta, multzo txikia.
+- ❌ **Ateratze masibo scriptatua** — Berria Hiztegiaren 500+ sarrera
+  script batez ateratzea `zalantza.js`-ra datu-base eratorri gisa =
+  baimenik gabe banatzeko arriskutsua.
+
+**2. Autore-posizioa: estilo-liburua, ez gramatika-liburua.** Berriak
+berariaz urruntzen du bere burua autoritate normatibotik ("Zer den/Nola erabili"):
+
+> "Hizkuntza kontuetan, ez dagokio BERRIAri zuzena edo okerra zer den
+> erabakitzea. Gogoan izan hau **estilo liburu bat dela, ez gramatika liburu
+> bat**. BERRIAk bere aukera estilistikoak egiten ditu... Beraz, izarrak ez
+> du ezinbestean esan nahi hitz, egitura edo dena delako hori gramatikaren
+> kontrakoa denik, baizik eta BERRIAk ez duela erabiltzen."
+
+Hau da, Berriaren zalantza `*` markak **egunkari baten hobespen editorialak**
+dira, ez epai normatiboak. EBEn (Euskaltzaindia) "erabili Y, ez X" bikoteek
+indar normatiboa dute ("akademiak Y agintzen du"); Berriarenek indar
+editoriala soilik ("egunkari batek ez du X erabiltzen"). Erabiltzaileari
+"erabili Y X-en ordez" esaten dion zuzentzaile baterako, EBE bikoteek
+pisu normatiboa dute; Berriaren bikoteek ez.
+
+### Sinteesia — hiru mailako eredu berria
+
+Aurreko atalen mapaketak ("F5 gazetteer-erako datu-iturri zuzena",
+"zalantza-hiztegiaren osagarria") goiko lizentzia- eta autore-aurkikuntzen
+argitan **berridatzi behar dira**. Berriak ezin da EBEren osagarri gisa
+banatu datozen datu-fitxategietan (lizentzia), eta bere zalantzak ez dute
+indar normatiborik (autore-posizioa). Baina honek ez du esan nahi baliogabea
+denik — baizik eta **hiru mailako eredu batera** pasatzen dela:
+
+| Maila | Iturria | UX etiketa | Banatu datu gisa? |
+|---|---|---|---|
+| **Zuzenketak** (normatiboak) | EBE / Euskaltzaindia | "Akatsa" / azpimarra gorria | Bai — masiboa, banatuta |
+| **Estilo-iradokizunak** (editorialak) | Berria (eskuzko curazioa soilik, lizentzia errespetatuz) | "Estiloa" / azpimarra urdina, baztergarria | Bai — txikia, eskuz aukeratua, atribuitua |
+| **Garapen-erreferentzia** | Biak | (UXrik ez) | Ez — prozesua soilik |
 
 | Dimension | EBE | Berria |
 |---|---|---|
-| Autoritatea | Euskaltzaindia (akademikoa) | Kazetaritza-praktika (Berria) |
+| Autoritatea | Euskaltzaindia (akademikoa, normatiboa) | Kazetaritza-praktika (editoriala, ez-normatiboa) |
+| Lizentzia | EBE erreferentzia (Euskaltzaindia) | All-rights-reserved (© Berria) |
+| Indar linguistikoa | "akademiak agintzen du" | "egunkari batek ez du erabiltzen" |
 | Estaldura | Arau orokorrak + zalantza-hiztegi zabala | Arau praktikoak + izen berezi zehatzak + estiloa |
 | Formatua | PDF (kolore-sinalearen mendeko §7.12) | HTML (mekanikoki irakurgarria, anotazio-sinboloekin) |
-| Zalantza-hitzak | 774 bikote erauzita (batch 1+2a) | Hiztegia — oraindik erauzi gabe (batch 3+) |
+| Zalantza-hitzak | 774 bikote erauzita (batch 1+2a) | Hiztegia — erauzi gabe (eta ez da masiboki erauziko) |
 | Izen bereziak | Maiuskulak sarrera (id=1023) | Ortotipografia + Onomastika + Mundua + Euskal Herria (askoz zabalagoa) |
 | Estiloa | ez estaltzen | Idazkuntza atal osoa (~16.000 hitz) |
 
-**Ondorioa**: Berria **ez da EBEren ordezkoa**, baizik eta **osagarria**.
-EBE autoritate primarioa izaten jarraitzen du erregela-geruzarentzat (jadanik
-774 zalantza-bikote erauzita eta 4 arau inplementatuta). Berriak gehitzen
-duena:
+**Ondorioa**: Berria **ez da EBEren ordezkoa**, eta ezin da EBEren osagarri
+normatibo gisa banatu ere. EBE autoritate primarioa izaten jarraitzen du
+erregela-geruzarentzat (jadanik 774 zalantza-bikote erauzita eta 5 arau
+inplementatuta). Berriaren rola **hirugarren maila** batekoa da:
 
-1. **Izen berezien estaldura askoz zabalagoa** (F5 gazetteer-erako) —
-   Ortotipografia + Onomastika + Mundua + Euskal Herria atalek datu zuzena
-   ematen dute toponimo, pertsona-izen, erakunde, kirol-talde, etab.
-   idazteko. Hau da Berriaren ekarpenik baliotsuena oraingo roadmap-erako.
-2. **Zalantza-hiztegi mekanikoki irakurgarria** — Hiztegia atalak anotazio-
-   sinbolo estandarizatuak ditu; EBEren kolore-mendeko erauzketa baino
-   errazagoa izan daiteke. Baina oraindik erauzi gabe — batch 3+.
-3. **Estilo-arauak** — Idazkuntza atala etorkizuneko P4 "style suggestions"
-   geruzarentzat da, ez P1 ortografia-eskoporako.
+1. **Garapen-erreferentzia** — beti baliozkoa: EBEtik eratorritako arauak
+   gurutzatzeko eta egiaztatzeko, garapen-prozesu gisa (commit mezuak,
+   RESEARCH.md oharrak), banaketarik gabe.
+2. **Estilo-iradokizunak** (P2/P3): etorkizuneko "style suggestions" geruzan
+   (Grammarly-ren clarity/consistency saskia), **eskuzko curazio txiki
+   batekin soilik** (ez ateratze masiboa), `style` etiketarekin eta
+   atribuzio argiarekin. `LintKind.Style` jada existitzen da
+   (`src/core/types.js`), eta TODO.md-ko P2-k aurreikusten du "akatsa vs
+   hobe izan liteke" bereizketa.
+3. **Ez da inoiz izango zalantza/izen-berezi iturri nagusia** — EBEk
+   betetzen du rola hau.
 
-### Gomendio zuzenak roadmap-erako
+### Gomendio zuzenak roadmap-erako (lizentzia-egiaztapenaren ondoren berridatzita)
 
-1. **F5 gazetteer** (P1 batch 3 / P2): Berriaren Ortotipografia + Onomastika
-   + Mundua + Euskal Herria atalak erauzi eta toponimo + izen berezi
-   zerrenda eraiki. EBEren §7.13-etik datozen 35 izen bereziekin batera.
-   Honek F5 akatsak konponduko lituzke (c091 erakundeen maiuskulak, c095
-   gorputz zerutiarrak, c096 modelaren gehiegizko maiuskulak).
+1. **F5 gazetteer — iturriak EBE/Euskaltzaindiara bideratu** (P1 batch 3 / P2):
+   Berriaren Ortotipografia + Onomastika + Mundua + Euskal Herria atalek datu
+   zabalagoa dute, baina lizentziak ez du uzten datu-base eratorria banatzen.
+   **Pibotea**: erabili Euskaltzaindiaren berezko toponimo/onomastika baliabideak
+   (Euskal Onomastika Datubasea, Euskaltzaindiaren Hiztegia) F5 datu iturri
+   gisa, EBEren §7.13-etik datozen 35 izen bereziekin batera. Berria garapen-
+   erreferentzia gisa kontsultatu daiteke toponimo zehatzak egiaztatzeko, baina
+   ez da banatutako zerrenda elikatzeko iturri. Honek F5 akatsak konponduko
+   lituzke (c091 erakundeen maiuskulak, c095 gorputz zerutiarrak, c096 modelaren
+   gehiegizko maiuskulak).
 
-2. **Zalantza-osagarria** (P1 batch 3+): Berriaren Hiztegia atala erauzi,
-   EBEren 774 bikoteekin gurutzatu, berriak gehitu. Formatua mekanikoki
-   irakurgarria denez, erauzketa EBErena baino errazagoa izan daiteke.
+2. **Zalantza-osagarria — BERTAN BEHAR DA** (bertan behera utzita): Berriaren
+   Hiztegia atala ez da zalantza-iturri banatu gisa erabiliko. Bi arrazoi:
+   (a) lizentziak ez du uzten ateratze masiboa; (b) Berriaren `*` markak
+   editorialak dira, ez normatiboak — "akatsa" gisa banatzeak bere indarra
+   gehiegiz neurtuko luke. **EBEren 774 bikoteak dira zalantza-iturria;
+   ez dago Berria delta-rik.**
 
-3. **Estilo-arauak** (P4+): Berriaren Idazkuntza atala ez da oraingo
-   prioritatea. "Style suggestions" geruza etorkizuneko lana da.
+3. **Estilo-iradokizunak** (P2/P3): Berriaren Idazkuntza + Hiztegia atalen edukia
+   etorkizuneko "style suggestions" geruzarako material gisa balio du, baina
+   **eskuzko curazio txiki batekin soilik** (20-30 sarrera handi, atribuituta,
+   `LintKind.Style` etiketarekin, baztergarriak). Ez da ateratze masiboa.
+   Ikus TODO.md P2/P3.
 
 4. **Domeinu-hiztegiak** (P3+): Gaikako hiztegiak atala ez da oraingo
-   prioritatea. Erabiltzailearen domeinuaren arabera hiztegi espezifikoa
-   kargatzea etorkizuneko ezaugarria da.
+   prioritatea, eta lizentzia-murrizketa berak aplikatzen zaio.
+
+5. **Aukeran: baimena eskatu** — `estiloliburua@berria.eus` helbidera
+   CC-BY baimena eskatzeko mezua bidal daiteke Berrian oinarritutako
+   gazetteer bat banatzeko. Baina editorial-vs-normatibo aurkikuntzagatik,
+   ROI baxua da: hobespen editorialak lizentziatzea genuke, eta guk epai
+   normatiboak behar ditugu, EBEk ematen dituenak.
 
 ### Egiaztapen-egoera
 
@@ -1982,6 +2060,9 @@ duena:
 | Onomastikak izen berezien arauak ditu | `/eliburua/onomastika` | Bai (izen laburra) |
 | Mundua/Euskal Herria toponimo-gazetteerrak dira | `/mundua`, `/euskal-herria` atalak | Bai (izen laburra) |
 | Gaikako hiztegiak domeinu-hiztegiak dira | `/gaikako-hiztegiak` | Bai (izen laburra) |
+| **Lizentzia: all-rights-reserved** (CC-rik ez) | `zer-den-nola-erabili` orriko copyright oharra | **Bai** |
+| **Berria = estilo-liburua, ez gramatika-liburua** (autore-posizioa) | `zer-den-nola-erabili`: "ez dagokio BERRIAri zuzena edo okerra zer den erabakitzea" | **Bai** |
+| Berriaren `*` markak editorialak dira, ez normatiboak | atal bera | **Bai** |
 
 **Muga**: Onomastika, Mundua, Euskal Herria, eta Gaikako hiztegiak atalen
 eduki osoa ez da hitzez hitz irakurrita — izenak eta deskribapen orokorrak

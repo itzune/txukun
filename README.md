@@ -7,20 +7,20 @@
 
 **Txukun** is a browser-based writing assistant for Basque. It checks grammar, spelling, capitalization, and punctuation — the same layers as Grammarly, but for Euskara, and with everything running privately in your browser. It combines three neural models with a deterministic rule engine grounded in [Euskaltzaindia](https://www.euskaltzaindia.eus/)'s EBE reference.
 
-- ✍️ **Grammar** — verb agreement, case, tense, suffix errors (GECToR)
-- 🔤 **Spelling** — context-aware re-ranking with BERTeus, on top of a 160k-word dictionary
-- 🔠 **Capitalization & punctuation** — MarianMT model + EBE-grounded rule engine
-- 🔒 **Private** — your text never leaves your device; all inference is in-browser (WASM)
-- 🆓 **Free & open-source** — built with open models and tools
-- 🇪🇺 **Basque-first** — UI available in Basque and English
+- **Grammar** — verb agreement, case, tense, suffix errors (GECToR)
+- **Spelling** — context-aware re-ranking with BERTeus, on top of a 160k-word dictionary
+- **Capitalization & punctuation** — MarianMT model + EBE-grounded rule engine
+- **Private** — your text never leaves your device; all inference is in-browser (WASM)
+- **Free & open-source** — built with open models and tools
+- **Basque-first** — UI available in Basque and English
 
 It works on any Basque text — articles, emails, essays. It's also a great fit for cleaning up [speech-to-text](https://github.com/itzune/parakeet-eu) output (ASR transcripts lack capitalization and punctuation), but that's one use case among many, not the whole tool.
 
-## 🌐 Website
+## Website
 
 [https://itzune.eus/txukun/](https://itzune.eus/txukun/)
 
-## ✨ Features
+## Features
 
 - **Grammar correction** — GECToR edit-based correction (int4 ONNX, ~85 MB) fixes real-word errors like verb agreement, case, tense, and suffix mistakes that spell check cannot detect
 - **Spell checking** — 160k-word dictionary with click-to-fix suggestions, enhanced by **BERTeus neural re-ranking** (int4 ONNX, 85 MB) for context-aware candidate selection
@@ -37,7 +37,7 @@ It works on any Basque text — articles, emails, essays. It's also a great fit 
 - **Diff view** — see exactly what changed
 - **Real-time mode** — correct as you type
 
-## 🧠 Models
+## Models
 
 Txukun uses **three neural models**, each addressing a different layer of Basque text quality. All run entirely in the browser via ONNX Runtime (WASM):
 
@@ -114,15 +114,15 @@ For comparison, GECToR-2024 (English, RoBERTa-large 300M, millions of pairs) sco
 
 The model is lazy-loaded in the background after the main pipeline initializes.
 
-## ⚠️ Limitations & Disclaimer
+## Limitations & Disclaimer
 
-### 🔴 Hallucinations
+### Hallucinations
 
 The underlying **HiTZ/cap-punct-eu** model can produce **hallucinations** — made-up words that don't exist — especially on short, unusual, or out-of-distribution input. This is a known limitation of the model, not a bug in Txukun. The ONNX quantization to int8 slightly alters the hallucinations (different nonsense words) but does not change the root cause.
 
 For best results, provide complete, well-formed sentences.
 
-### 🟡 Spell checking
+### Spell checking
 
 Spell correction runs in **two tiers**:
 
@@ -136,11 +136,11 @@ Spell correction runs in **two tiers**:
 
 The BERTeus and GECToR models are **lazy-loaded** only when needed, so they add no cost to normal typing.
 
-### 🟦 Scope
+### Scope
 
 Txukun is designed for **Basque text** (`eu`/`eus`). It will not work correctly for other languages.
 
-## 🛡️ Error handling & fallback
+## Error handling & fallback
 
 Txukun is designed to **degrade gracefully** — if any component fails, the pipeline falls back to the previous tier rather than crashing:
 
@@ -155,7 +155,7 @@ Txukun is designed to **degrade gracefully** — if any component fails, the pip
 
 The net effect: **the worst case is that text comes out with only cap-punct correction and dictionary-frequency spell fixes** — never corrupted, never empty. GECToR can be disabled via `?grammar=0` URL parameter.
 
-## 🎯 Confidence filtering
+## Confidence filtering
 
 Each model produces a confidence score for every suggestion. Low-confidence corrections are automatically suppressed to reduce **over-correction** (wrong changes) and **false positives** (inventing errors in clean text).
 
@@ -169,7 +169,7 @@ These thresholds were calibrated on a 220-case evaluation dataset (see [`txukun-
 
 **Result**: 22.7% → 38.6% accuracy (+15.9% absolute), cutting over-corrections from 139 → 66 and false positives from 12 → 1.
 
-> ⚠️ **If models are updated or retrained**, these thresholds should be reviewed. Re-run the evaluation:
+> **If models are updated or retrained**, these thresholds should be reviewed. Re-run the evaluation:
 > ```bash
 > # In txukun-cli:
 > uv run python tests/gec-benchmark/run_eval.py --output /tmp/eval_results.json
@@ -178,7 +178,7 @@ These thresholds were calibrated on a 220-case evaluation dataset (see [`txukun-
 
 Config is in `src/analyze.js` (`CONFIDENCE_THRESHOLDS` constant).
 
-## 🚀 Development
+## Development
 
 ```bash
 # Install dependencies
@@ -230,9 +230,9 @@ txukun/
 └── README.md
 ```
 
-## 🔗 Related projects
+## Related projects
 
-- **🔌 Txukun CLI** — same model as a command-line tool: [itzune/txukun-cli](https://github.com/itzune/txukun-cli)
+- **Txukun CLI** — same model as a command-line tool: [itzune/txukun-cli](https://github.com/itzune/txukun-cli)
 - [Parakeet-eu](https://github.com/itzune/parakeet-eu) — Basque ASR (speech-to-text)
 - [Nongoeuskara](https://github.com/itzune/nongoeuskara) — Basque dialect identification
 - [Evaleu](https://github.com/itzune/evaleu) — Basque LLM evaluation leaderboard
@@ -246,7 +246,7 @@ txukun/
 - [gotutiyan/gector](https://github.com/gotutiyan/gector) — GECToR PyTorch implementation
 - [Elhuyar GEC corpus](https://hitz.eus/es/geleriak/corpus-and-resources/erreparatu-corpus) — Basque GEC training data (CC-BY-NC-SA)
 
-## 📄 License
+## License
 
 MIT — see [LICENSE](LICENSE) for details.
 
@@ -258,8 +258,33 @@ The RoBERTa-eus-base model (`ixa-ehu/roberta-eus-euscrawl-base-cased`) is licens
 
 The GECToR grammar model (`itzune/gector-eus-onnx`) is licensed under **CC-BY-NC-SA 4.0**. The model weights are a derivative work of the **Elhuyar GEC corpus** (CC-BY-NC-SA): under the ShareAlike clause, the weights inherit the same license. This means **no commercial use** of the GECToR model weights. See the [gector-eus README](https://github.com/itzune/gector-eus#license) for details.
 
+## Acknowledgements
+
+Txukun builds on the work of many researchers, institutions, and open-source projects:
+
+**Linguistic foundations**
+
+- [Euskaltzaindia](https://www.euskaltzaindia.eus/) — the Basque Language Academy. The deterministic rule engine is grounded in EBE (*Euskararen Aholkularia* / *Euskara Batuaren Eskuliburua*), the normative reference for standardized Basque. Zalantza-hitzak (doubtful-word pairs), capitalization, and punctuation rules are extracted and verified against EBE.
+- [Berria](https://www.berria.eus/estiloliburua) — *Estilo Liburua* consulted as a dev-time reference for journalistic style conventions and to cross-validate EBE-derived rules (see `RESEARCH.md` §7.14 for license and scope notes).
+
+**Models**
+
+- [HiTZ Zentroa](https://hitz.eus/) — the original `cap-punct-eu` capitalization & punctuation model.
+- [IXA NLP Group](https://ixa.eus/) (UPV/EHU) — [BERTeus](https://huggingface.co/ixa-ehu/berteus-base-cased) and [RoBERTa-eus-base](https://huggingface.co/ixa-ehu/roberta-eus-euscrawl-base-cased), the Basque neural models underlying spell re-ranking and grammar correction.
+- [Elhuyar](https://hitz.eus/es/geleriak/corpus-and-resources/erreparatu-corpus) — the Basque GEC corpus used to train the GECToR grammar model.
+- [gotutiyan/gector](https://github.com/gotutiyan/gector) — the GECToR PyTorch implementation the grammar model training is based on.
+
+**Infrastructure & research**
+
+- [Harper](https://github.com/automattic/harper) — the rule-engine architecture was informed by studying Harper's hybrid rule + neural design (see `RESEARCH.md` §7.5, §7.8).
+- [Hugging Face](https://huggingface.co/) — [Transformers.js](https://huggingface.co/docs/transformers.js) for in-browser model loading and model hosting.
+- [ONNX Runtime](https://onnxruntime.ai/) — Web WASM inference enabling client-side neural models.
+- [Vite](https://vitejs.dev/) — build tooling.
+
+Txukun is part of the [Itzune](https://itzune.eus) ecosystem of Basque language AI tools.
+
 ---
 
 <p align="center">
-  <sub>🧹 Built with ❤️ by <a href="https://itzune.eus">Itzune</a> — for Euskara</sub>
+  <sub>Built by <a href="https://itzune.eus">Itzune</a> — for Euskara</sub>
 </p>
