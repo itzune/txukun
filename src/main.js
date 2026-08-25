@@ -162,6 +162,10 @@ async function onAnalyze() {
 
 // ── Document switching ──────────────────────────────────────────────
 
+function closeMobilePanels() {
+  document.getElementById('app')?.classList.remove('left-open', 'right-open');
+}
+
 function onDocSwitch(doc) {
   if (!doc) return;
   setActiveId(doc.id);
@@ -170,6 +174,7 @@ function onDocSwitch(doc) {
   titleInput.value = doc.title || 'Dokumentu berria';
   clearErrors();
   clearCards();
+  closeMobilePanels();
   focusEditor();
 }
 
@@ -219,13 +224,22 @@ function updateStatus(status) {
 // ── Event wiring ────────────────────────────────────────────────────
 
 function wireEvents() {
-  // Panel toggles
-  document.getElementById('btnToggleLeft').addEventListener('click', () => {
-    document.getElementById('app').classList.toggle('left-collapsed');
-  });
-  document.getElementById('btnToggleRight').addEventListener('click', () => {
-    document.getElementById('app').classList.toggle('right-collapsed');
-  });
+  // Panel toggles (mobile = slide-in overlay drawer, desktop = collapse column)
+  const MQ_MOBILE = window.matchMedia('(max-width: 900px)');
+  const togglePanel = (side) => {
+    const app = document.getElementById('app');
+    if (MQ_MOBILE.matches) {
+      const cls = side + '-open';
+      const wasOpen = app.classList.contains(cls);
+      app.classList.remove('left-open', 'right-open');
+      if (!wasOpen) app.classList.add(cls);
+    } else {
+      app.classList.toggle(side + '-collapsed');
+    }
+  };
+  document.getElementById('btnToggleLeft').addEventListener('click', () => togglePanel('left'));
+  document.getElementById('btnToggleRight').addEventListener('click', () => togglePanel('right'));
+  document.getElementById('panelBackdrop').addEventListener('click', closeMobilePanels);
 
   // Analyze button
   document.getElementById('btnAnalyze').addEventListener('click', onAnalyze);

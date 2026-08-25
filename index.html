@@ -354,6 +354,7 @@
       background: var(--bg-editor);
       overflow: hidden;
       position: relative;
+      min-width: 0; /* prevent grid blow-out from wide content (CodeMirror) */
     }
 
     .editor-wrap {
@@ -785,14 +786,91 @@
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--border-focus); }
 
-    /* Responsive — collapse panels on narrow */
+    /* Responsive — mobile drawers + condensed topbar
+       Desktop keeps the 3-column grid (left-collapsed / right-collapsed).
+       ≤900px: single column; panels become slide-in overlay drawers; the
+       topbar is condensed so its min-content width no longer forces the grid
+       to overflow (which previously squeezed the editor off-screen). */
+    .panel-backdrop { display: none; }
+
     @media (max-width: 900px) {
-      .app { grid-template-columns: 0 1fr var(--right-w); }
-      .left-panel { display: none; }
+      :root { --topbar-h: 50px; }
+
+      /* Single-column grid; nullify desktop collapse classes on mobile */
+      .app,
+      .app.left-collapsed,
+      .app.right-collapsed,
+      .app.left-collapsed.right-collapsed {
+        grid-template-columns: 1fr;
+      }
+
+      /* Condensed topbar — hide non-essentials so it fits ≤360px */
+      .topbar { padding: 0 8px; gap: 4px; }
+      .topbar__brand { flex: 1; min-width: 0; font-size: 14px; padding: 0 4px; }
+      .topbar__brand svg { width: 18px; height: 18px; }
+      .topbar__doc-title { display: none; }            /* doc name not needed while editing */
+      .topbar__status #statusText { display: none; }   /* keep status dot only */
+      .lang-toggle { display: none; }                  /* rarely needed on mobile */
+      .topbar__btn[href*="github"] { display: none; }
+      .topbar__analyze { padding: 7px 12px; }
+
+      /* Panels slide in as overlays from the edges */
+      .left-panel,
+      .right-panel {
+        position: fixed;
+        top: var(--topbar-h);
+        bottom: 0;
+        z-index: 40;
+        box-shadow: var(--shadow-md);
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .left-panel {
+        left: 0;
+        width: min(300px, 82vw);
+        transform: translateX(-100%);
+        border-right: 1px solid var(--border);
+      }
+      .right-panel {
+        right: 0;
+        left: auto;
+        width: min(360px, 88vw);
+        transform: translateX(100%);
+      }
+      .app.left-open .left-panel { transform: translateX(0); }
+      .app.right-open .right-panel { transform: translateX(0); }
+
+      /* Backdrop dims the editor and closes the drawer on tap */
+      .panel-backdrop {
+        display: block;
+        position: fixed;
+        top: var(--topbar-h);
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 35;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+      }
+      .app.left-open .panel-backdrop,
+      .app.right-open .panel-backdrop {
+        opacity: 1;
+        pointer-events: auto;
+      }
     }
+
     @media (max-width: 640px) {
-      .app { grid-template-columns: 0 1fr 0; }
-      .right-panel { display: none; }
+      .topbar__status { display: none; }                /* hide status dot too */
+      .topbar__analyze #analyzeLabel { display: none; } /* icon-only Aztertu */
+      .topbar__analyze { padding: 7px 10px; }
+      .editor-footer { padding: 6px 12px; }
+      .editor-footer__hint { display: none; }
+      .editor-wrap .cm-content {
+        max-width: 100%;
+        padding: 20px 16px 100px;
+        font-size: 15px;
+      }
     }
   </style>
 </head>
@@ -901,6 +979,9 @@
         </div>
       </div>
     </aside>
+
+    <!-- Backdrop for mobile panel drawers (tap to close) -->
+    <div class="panel-backdrop" id="panelBackdrop"></div>
   </div>
 
   <!-- Toast container -->
