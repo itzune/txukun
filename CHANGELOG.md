@@ -6,6 +6,25 @@ All notable changes to Txukun will be documented in this file.
 
 ## [Unreleased] — post-v2.0.0 (zalantza rule + Txukun Lite UI fix)
 
+### LLM research — synthetic-data GEC feasibility study
+
+#### Added
+- **`LLM-RESEARCH.md`** — deep research document on the viability of fine-tuning
+  a small LLM for Basque GEC via synthetic error data (the user's proposal).
+  Covers: the LLM-for-GEC industry trend (Grammarly mEdIT, BEA/EMNLP 2025),
+  synthetic data generation as established SOTA (Stahlberg 2021, Keita 2024
+  Zarma), Basque-specific resources (Latxa 7B–70B, Llama-eus-8B), and browser
+  deployment constraints (WebLLM ~8B ceiling).
+- **Key finding**: the exact approach has already been published for Basque —
+  Beloki et al. (SEPLN) built a seq2seq GEC with rule-based error injection from
+  a 500K-article Berria corpus, achieving 0.87 F0.5. The authors (Saralegi,
+  Corral) are the same Elhuyar/HiTZ group that built Llama-eus-8B.
+- **Recommendation**: build the synthetic dataset first (Phase 1, no ML needed —
+  pure programming, highest value, reusable asset). Defer LLM fine-tuning
+  (Phase 3) until the dataset is built and a collaboration/learning path for
+  the ML work is identified. The hard constraint is browser deployment, not
+  data or training.
+
 ### ASR detection gate — cap-punct hallucination fix
 
 #### Fixed
