@@ -29,8 +29,11 @@ import { ZALANTZA } from '../data/zalantza.js';
  *   Title-case → Title-case target (first letter upper, rest lower)
  *   all-UPPER  → UPPER target
  *   mixed      → null (skip; likely a proper noun)
+ *
+ * Shared with zalantza-phrases.js (phrase rule applies it to the first word
+ * token of a matched span). Handles multi-word target strings (Type C / phrases).
  */
-function matchCase(source, target) {
+export function matchCase(source, target) {
   if (source === source.toLowerCase() && source.length > 0) {
     return target.toLowerCase();
   }

@@ -57,8 +57,8 @@ console.log('╚═════════════════════�
 // ── Data integrity ──────────────────────────────────
 
 console.log('Data integrity:');
-test('dictionary has 739 pairs', () => {
-  eq(Object.keys(ZALANTZA).length, 739, 'pair count');
+test('dictionary has 720 single-token pairs', () => {
+  eq(Object.keys(ZALANTZA).length, 720, 'pair count');
 });
 test('dictionary is frozen', () => {
   eq(Object.isFrozen(ZALANTZA), true);
@@ -98,6 +98,14 @@ test('compound fragments excluded from dictionary', () => {
   eq(ZALANTZA['paper'], undefined, 'paper must be absent');
   eq(ZALANTZA['bizkar'], undefined, 'bizkar (back) must be absent');
   eq(ZALANTZA['leiho'], undefined, 'leiho (window) must be absent');
+});
+test('hyphenated compounds moved to phrases file (not single-word)', () => {
+  // These 19 were reclassified: tokenizer splits 'gora-behera' into 3 tokens,
+  // so they can't match as single 'word' tokens. Now in zalantza-phrases.js.
+  eq(ZALANTZA['gora-behera'], undefined, 'gora-behera moved to phrases');
+  eq(ZALANTZA['ipar-izar'], undefined, 'ipar-izar moved to phrases');
+  eq(ZALANTZA['bizkar-hezur'], undefined, 'bizkar-hezur moved to phrases');
+  eq(ZALANTZA['bertso-paper'], undefined, 'bertso-paper moved to phrases');
 });
 test('verb-collision word gara excluded', () => {
   eq(ZALANTZA['gara'], undefined, 'gara (we are) must be absent');

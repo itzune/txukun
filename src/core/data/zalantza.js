@@ -1,29 +1,30 @@
 /**
  * Txukun — Zalantza-hitzak data (EBE *Zalantza eragiten duten zenbait hitz*)
  *
- * Canonical (dispreferred → recommended) word pairs, extracted directly from
- * Euskaltzaindia's EBE appendix (PDF pp. 479–490) via pdfplumber color analysis.
- * RED text (CMYK 0,1,1,0) = 'ez erabili' (don't use); BOLD = standard form.
+ * Canonical (dispreferred → recommended) SINGLE-TOKEN word pairs, extracted
+ * directly from Euskaltzaindia's EBE appendix (PDF pp. 479–490) via pdfplumber
+ * color analysis. RED text (CMYK 0,1,1,0) = 'ez erabili' (don't use); BOLD =
+ * standard form.
+ *
+ * This file contains ONLY pairs whose RED form is a single orthographic token
+ * (no hyphens, no spaces) — i.e. matchable by the single-word rule's per-token
+ * lookup. Multi-token pairs (hyphenated compounds + multi-word phrases) live in
+ * zalantza-phrases.js and are matched by the phrase rule's token-sequence matcher.
  *
  * Extraction verified (see RESEARCH.md §7.12–§7.13):
- *   - 739 single-word pairs (this file)
+ *   - 720 single-token pairs (this file)
  *     • 628 from batch 1 (§7.12, initial color-classified extraction)
- *     • 92 new single-word pairs from batch 2a (§7.13, v6 extractor — comma-drop
- *       bug fix recovered pairs missed by batch 1)
+ *     • 92 new single-word pairs from batch 2a (§7.13, v6 extractor)
  *     • 19 Type C pairs: single-word RED → multi-word BOLD target
  *       (e.g. abioneta → hegazkin txiki). matchCase() handles multi-word targets.
- *   - 0 compound-fragment leaks (parenthesized-hyphen compounds joined)
+ *   - 19 hyphenated compounds reclassified to zalantza-phrases.js (batch 2a
+ *     Phase 2): the tokenizer splits 'gora-behera' into [gora, '-', behera], so
+ *     these could never match as single tokens.
  *   - 0 idempotency overlap (no RED word is also a BOLD target → no X→Y→Z chains)
- *   - 1 polysemous exclusion: 'gara' = both 'train station' (French loanword,
- *     RED) and 'we are' (auxiliary verb) → excluded to avoid false positives
- *   - 33 multi-word phrase pairs → separate rule (zalantza-phrases, Phase 2)
- *   - 35 proper-noun pairs → F5 gazetteer (Phase 3)
- *   - 6 ambiguous multi-target pairs skipped (e.g. kaja→kaxa|kutxa)
+ *   - 1 polysemous exclusion: 'gara' (train station vs 'we are' auxiliary)
  *
  * Keys are lowercase canonical dispreferred forms. The rule preserves the
  * source token's case pattern (lower / Title / UPPER) when substituting.
- * Multi-word targets (Type C) are case-preserved by applying matchCase to the
- * full target string (first-letter capitalization for Title-case).
  *
  * Source: https://www.euskaltzaindia.eus/components/com_ebe/pdf/EBE-eranskinak.pdf
  *
@@ -50,7 +51,6 @@ export const ZALANTZA = Object.freeze({
   'aina': 'adina',
   'aintzin': 'aitzin',
   'aintzina': 'antzina',
-  'aiton-amonak': 'aitona-amonak',
   'aitzaki': 'aitzakia',
   'akanpatu': 'kanpatu',
   'akorazatu': 'korazatu',
@@ -70,7 +70,6 @@ export const ZALANTZA = Object.freeze({
   'amorrai': 'amuarrain',
   'amorrain': 'amuarrain',
   'amorraldi': 'amorrualdi',
-  'anaia-arrebak': 'anai-arrebak',
   'anbulategi': 'anbulatorio',
   'anima': 'arima',
   'anitz': 'askotariko',
@@ -134,7 +133,6 @@ export const ZALANTZA = Object.freeze({
   'balin': 'baldin',
   'balioanitz': 'balioaniztun',
   'baloraketa': 'balorazio',
-  'banan-banako': 'bana-banako',
   'bangoardia': 'abangoardia',
   'banguardia': 'abangoardia',
   'bapatean': 'bat-batean',
@@ -158,7 +156,6 @@ export const ZALANTZA = Object.freeze({
   'beretsu': 'bertsu',
   'berezilari': 'espezialista',
   'berredura': 'berretura',
-  'bertso-paper': 'bertsopaper',
   'betarte': 'begitarte',
   'beterinario': 'albaitari',
   'betosko': 'bekozko',
@@ -173,7 +170,6 @@ export const ZALANTZA = Object.freeze({
   'biluztu': 'biluzi',
   'birtute': 'bertute',
   'bizarmakina': 'bizar-makina',
-  'bizkar-hezur': 'bizkarrezur',
   'biztuera': 'piztuera',
   'blasfemia': 'birao',
   'bodegoi': 'ardandegi',
@@ -257,8 +253,6 @@ export const ZALANTZA = Object.freeze({
   'entseiatu': 'entseatu',
   'entseiu': 'entsegu',
   'erabakior': 'erabakigarri',
-  'erakus-leiho': 'erakusleiho',
-  'erakus-mahai': 'erakusmahai',
   'erakustarazi': 'erakutsarazi',
   'erantzunkizun': 'erantzukizun',
   'eraskin': 'eranskin',
@@ -297,7 +291,6 @@ export const ZALANTZA = Object.freeze({
   'eskerrikasko': 'eskerrik asko',
   'eskilera': 'eskailera',
   'esklabu': 'esklabo',
-  'eskrezio-aparatu': 'iraitzaparatu',
   'eskubi': 'eskuin',
   'eskubila': 'eskuila',
   'eskui': 'eskuin',
@@ -357,7 +350,6 @@ export const ZALANTZA = Object.freeze({
   'goardazibil': 'guardia zibil',
   'goardia': 'guardia',
   'goilare': 'koilara',
-  'gora-behera': 'gorabehera',
   'grado': 'gradu',
   'grua': 'garabi',
   'gudaloste': 'armada',
@@ -371,7 +363,6 @@ export const ZALANTZA = Object.freeze({
   'harmarri': 'armarri',
   'haro': 'aro',
   'harotz': 'arotz',
-  'harridura-ikur': 'harridura-marka',
   'hasera': 'hasiera',
   'hatzamar': 'atzamar',
   'hatzazal': 'azazkal',
@@ -396,7 +387,6 @@ export const ZALANTZA = Object.freeze({
   'hitzegin': 'hitz egin',
   'hormairudi': 'horma-irudi',
   'hormirudi': 'horma-irudi',
-  'hortz-artatzaile': 'aho-artatzaile',
   'hostia': 'ostia',
   'hozpera': 'hozbera',
   'hugonote': 'higanot',
@@ -417,7 +407,6 @@ export const ZALANTZA = Object.freeze({
   'ihizketa': 'ehiza',
   'ikuilu': 'ukuilu',
   'ikurriñ': 'ikurrin',
-  'ikus-entzutezko': 'ikus-entzunezko',
   'ikusentzule': 'ikus-entzule',
   'ikuskor': 'ikusgai',
   'ikustezin': 'ikusezin',
@@ -440,8 +429,6 @@ export const ZALANTZA = Object.freeze({
   'instant': 'istant',
   'instituto': 'institutu',
   'ioga': 'yoga',
-  'ipar-izar': 'iparrizar',
-  'ipar-orratz': 'iparrorratz',
   'iparrekialde': 'ipar-ekialde',
   'iraizean': 'iragaitzaz',
   'irakaskintza': 'irakaskuntza',
@@ -450,7 +437,6 @@ export const ZALANTZA = Object.freeze({
   'islada': 'isla',
   'isladatu': 'islatu',
   'israeliar': 'israeldar',
-  'itsas-zain': 'itsasozain',
   'itsasandi': 'itsas handi',
   'itsasuntzi': 'itsasontzi',
   'itsusikeria': 'itsuskeria',
@@ -487,7 +473,6 @@ export const ZALANTZA = Object.freeze({
   'kamaleoi': 'kameleoi',
   'kamarero': 'zerbitzari',
   'kanadiar': 'kanadar',
-  'kanpaina-denda': 'kanpadenda',
   'kanpus': 'campus',
   'karamelo': 'karamelu',
   'karburadore': 'karburagailu',
@@ -601,7 +586,6 @@ export const ZALANTZA = Object.freeze({
   'nigar': 'negar',
   'notari': 'notario',
   'objetibo': 'objektibo',
-  'odol-baso': 'odol-hodi',
   'oh': 'o',
   'ohituratu': 'ohitu',
   'ohostu': 'ostu',
@@ -671,7 +655,6 @@ export const ZALANTZA = Object.freeze({
   'saguzahar': 'saguzar',
   'sailordetza': 'sailburuordetza',
   'sapai': 'sabai',
-  'saski-baloi': 'saskibaloi',
   'scanner': 'eskaner',
   'scout': 'eskaut',
   'seda': 'zeta',
@@ -700,7 +683,6 @@ export const ZALANTZA = Object.freeze({
   'sustantibo': 'substantibo',
   'tamainu': 'tamaina',
   'tantu': 'tanto',
-  'te-ontzi': 'teontzi',
   'tila': 'ezki-lore',
   'tintatu': 'tindatu',
   'tolare': 'dolare',
@@ -772,4 +754,4 @@ export const ZALANTZA = Object.freeze({
   'zuzpertu': 'suspertu',
 });
 
-// 739 pairs. Extracted 2026-08-26/27 from EBE PDF (color-classified).
+// 720 single-token pairs. Extracted 2026-08-26/27 from EBE PDF (color-classified).
