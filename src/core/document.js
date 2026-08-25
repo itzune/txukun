@@ -73,6 +73,20 @@ function isSentenceEnd(punctText) {
 }
 
 /**
+ * Is a word token entirely numeric (digits)?
+ *
+ * Used to detect ordinal / thousands-separator periods. Per EBE Puntuazioa
+ * §1.2.2 "Zenbakietakoa", a period after a digit number replaces the
+ * -garren ordinal suffix (e.g. "7." = 7garren, "1993. urtean" =
+ * "1993garren urtean") or acts as a thousands separator ("2.018").
+ * Such a period is NOT a sentence terminator. EBE itself uses the form
+ * "1927. urtearen" (ebe-punt.txt line 174).
+ */
+function isNumericWord(tok) {
+  return tok.kind === 'word' && /^\p{N}+$/u.test(tok.text);
+}
+
+/**
  * A document: source text + tokenized tokens.
  * Provides iterSentences() for rule navigation.
  */
@@ -107,6 +121,13 @@ export class Document {
         sentStart = i;
       }
       if (sentStart !== null && tok.kind === 'punctuation' && isSentenceEnd(tok.text)) {
+        // EBE §1.2.2 "Zenbakietakoa": a period following a digit number is
+        // an ordinal marker ("1993. urtean" = 1993garren urtean) or a
+        // thousands separator ("2.018"), NOT a sentence terminator. Skip
+        // the split so the following word is not treated as sentence-initial.
+        if (/\./.test(tok.text) && i > 0 && isNumericWord(this.tokens[i - 1])) {
+          continue;
+        }
         sentences.push(this.tokens.slice(sentStart, i + 1));
         sentStart = null;
       }

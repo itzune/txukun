@@ -117,6 +117,34 @@ test('pure word substitution NOT flagged (isCasePunctOnly guard)', () => {
   eq(isCasePunctOnly('miren', 'miren'), false, 'identical rejected');
 });
 
+test('ordinal period after a number is NOT a sentence boundary (EBE §1.2.2)', () => {
+  // EBE Puntuazioa §1.2.2 "Zenbakietakoa": a period after a digit number
+  // replaces the -garren ordinal suffix. "1993. urtean" = "1993garren urtean"
+  // (in the 1993rd year). The period is an ordinal marker, NOT a sentence
+  // terminator — so "urtean" must NOT be capitalized as sentence-initial.
+  // EBE itself uses "1927. urtearen" (ebe-punt.txt line 174).
+  //
+  // Before the fix: iterSentences split at "1993.", making "urtean" the
+  // first word of a new sentence → false "Urtean" suggestion.
+  eq(detectCapPunctLite('1993. urtean jaio nintzen.'), [], 'ordinal year → no false cap');
+  eq(detectCapPunctLite('Bigarren etapa 1927. urtearen artean izan zen.'), [],
+    'EBE example "1927. urtearen" → no false cap');
+  // Ruled output must be unchanged (already correct).
+  eq(runRules('1993. urtean jaio nintzen.', allRules).corrected,
+    '1993. urtean jaio nintzen.', 'ruled output preserves ordinal');
+  // Thousands separator ("2.018") is also not a sentence boundary.
+  eq(detectCapPunctLite('2.018 ogi ekarri ditu.'), [], 'thousands separator → no false cap');
+});
+
+test('genuine sentence end after a word still splits (no regression)', () => {
+  // A period after a LETTER word is still a sentence boundary — "da. etorri"
+  // splits, and "etorri" IS sentence-initial → capitalize.
+  const errors = detectCapPunctLite('etorri da. etorri berriro.');
+  eq(errors.length > 0, true, 'real sentence split still fires cap');
+  const { corrected } = runRules('etorri da. etorri berriro.', allRules);
+  eq(corrected, 'Etorri da. Etorri berriro.', 'second sentence capitalized');
+});
+
 function test(name, fn) {
   console.log(`${name}:`);
   try { fn(); } catch (e) {
