@@ -1368,3 +1368,170 @@ a rule actually requires it).
 The cap-punct suite (33 cases, 100% strict) remains as a regression guard for the
 existing rule layer. It is NOT the right harness for measuring new EBE rules, which
 is why a separate eval strategy (Finding 4) is needed.
+
+## 7.12 Zalantza-hitzak — erauzketa eta egiaztapena (EBE PDF color analysis)
+
+**Date:** 2026-08-26
+**Goal:** Extract the authoritative `(dispreferred → recommended)` word pairs
+from Euskaltzaindia's *Zalantza eragiten duten zenbait hitz* (EBE appendix,
+PDF pp. 479–490) and turn them into a deterministic, dictionary-driven
+correction rule (`src/core/rules/zalantza-words.js`).
+
+### Why this needed bespoke extraction (not the plain-text file)
+
+`docs/ebe-reference/ebe-zal.txt` is a plain-text dump of the same section, but
+the README already warns that **color information is lost** in extraction. Color
+is the *only* signal for directionality in the EBE zalantza list:
+
+- **RED** text (CMYK `(0,1,1,0)`) = "ez erabili" — the dispreferred form
+- **BOLD** text = the standard / recommended form
+- **regular** (non-bold, non-red) = secondary/acceptable form — *not* a correction
+
+Without color, "abots / ahots" is ambiguous: which is wrong? With color:
+`<R>abots <B>ahots` → abots is wrong, ahots is right. The plain-text file cannot
+express this. So the extraction had to go back to the source PDF and read
+character-level color + font weight.
+
+### Extraction method (pdfplumber, 4 iterations)
+
+The extractor (`docs/ebe-reference/extract-zalantza.py`) reads PDF pages 28–48
+(0-indexed 27–47), splits each page into left/right columns, groups characters
+by line (rounded `top`), and classifies each character:
+
+```python
+def char_class(c):
+    col = c.get("non_stroking_color")   # CMYK tuple
+    font = c.get("fontname", "")
+    if col == (0, 1, 1, 0): return "R"  # RED → dispreferred
+    if "Bold" in font:       return "B"  # BOLD → standard
+    return "k"                            # regular → secondary (ignored)
+```
+
+Characters are then re-tokenized into word-units, tagged with their class, and
+grouped into phrases (same-class, space-joined). A `(RED → BOLD)` pair is
+extracted when a line has exactly one BOLD single-word target and one or more
+RED single-word sources.
+
+**Four iterations** were needed to reach a clean dataset:
+
+1. **v1** — naive per-word extraction. Produced ~708 pairs but leaked compound
+   fragments (see v3).
+2. **v2** — added phrase grouping (multi-word RED forms separated to batch 2).
+3. **v3** — handled the `(-)` parenthesized-hyphen pattern. EBE writes compound
+   dispreferred forms like `bertso(-)paper` to mean "the hyphenated compound
+   bertso-paper". A naive tokenizer splits this into `bertso` + `paper` as
+   standalone RED words, leaking common valid words (`izar`, `hezur`, `bizkar`,
+   `leiho`, `mahai`, `orratz`, `kanpaina`, `denda`, `saski`, `baloi`, `paper`)
+   as false "don't use" entries. **Fix:** detect `(-)` / `(<color>-)` sequences
+   in the character stream and treat them as a hyphen *joiner* — `bertso(-)paper`
+   becomes one token `bertso-paper`, correctly routed to the multi-word (batch 2)
+   list instead of leaking standalone fragments.
+4. **v4** — idempotency + collision audit (see below).
+
+### Verification (5 checks)
+
+Before shipping, the 628-pair dataset passed all five checks:
+
+1. **Direction validated against EBE's own intro.** The EBE zalantza section
+   opens with worked examples whose direction is stated in prose
+   (`ahalbait` is explicitly "ez erabili"). The color classifier was confirmed
+   against these: `ahalbait`=RED ✓, `abots`=RED ✓, `abortu`=BOLD ✓, `ahots`=BOLD ✓.
+
+2. **Zero compound-fragment leaks.** All `(-)` compounds are joined into single
+   multi-word tokens. Verified absent from the single-word set: `izar`, `hezur`,
+   `bizkar`, `leiho`, `mahai`, `orratz`, `kanpaina`, `denda`, `saski`, `baloi`,
+   `paper`, `bertso`, `ipar`, `buru`. (These are all valid common words that are
+   only dispreferred *inside* specific compounds like `ipar-izar` → `iparrizar`.)
+
+3. **Zero idempotency overlap.** Iterative re-lint (the engine applies one lint
+   per pass, then re-tokenizes) would over-correct if a chain `X→Y→Z` existed
+   (X replaced by Y, then Y replaced by Z). Audit confirmed: **no RED word is
+   also a BOLD target** — 0 overlap. The one near-miss (`papel→paper` and
+   `paper→bertsopaper`) was caught and resolved: `paper→bertsopaper` was a
+   `(-)` fragment of `bertso(-)paper`, removed by the v3 joiner fix. (`paper` is
+   in fact a BOLD recommended form for `papel`.)
+
+4. **Zero verb/function-word collisions.** A RED word that is also a common verb
+   or function word would cause dangerous over-correction. The one collision
+   found — `gara` (RED, mapped to `geltoki` "train station", a French loanword)
+   — is also the 1st-person-plural present auxiliary "we are". Replacing "gara"
+   in "etorri gara" ("we have come") with "geltoki" would be catastrophic. This
+   is a genuine polysemy: `gara` = both "train station" (regional French loan)
+   and "we are" (auxiliary). **Decision:** exclude `gara` entirely — too
+   ambiguous for a context-free word rule; needs POS or gazetteer to disambiguate.
+   A full scan of the 628 RED words against Basque verb/function-word lists found
+   **no other collisions.**
+
+5. **Spot-checks against known Basque linguistics.** Sample pairs confirmed
+   correct direction: `amapola→mitxoleta` (poppy, Spanish→Basque), `onda→uhin`
+   (wave), `bena→zain` (vein), `xori→txori` (bird, dialectal x→tx), `abots→ahots`
+   (voice), `azufre→sufre` (sulfur). All match established Basque lexicography.
+
+### Final dataset
+
+| Category | Count | Disposition |
+|---|---|---|
+| Single-word unambiguous pairs | **628** | Shipped (`src/core/data/zalantza.js`) |
+| Multi-word phrase pairs | 108 | Batch 2 (needs phrase-level detection; some are proper-noun/gazetteer territory) |
+| Ambiguous multi-target pairs | 5 | Skipped (context-dependent: `boltsa→burrsa\|poltsa`, `kartera→diru-zorro\|paper-zorro`, `magisteritza→...`, `ingresatu→kartzelatu\|ospitaleratu`, `kaja→kaxa\|kutxa`) |
+| Compound-fragment leaks | 0 | Eliminated by v3 `(-)` joiner |
+| Verb collisions | 1 (`gara`) | Excluded |
+
+The 628 shipped pairs cover: Spanish/French loanwords (`aborto→abortu`,
+`amapola→mitxoleta`, `azufre→sufre`), dialectal consonant variants
+(`xori→txori`, `ixil→isil`), apocopes, and spelling regularizations.
+
+### Rule design (`src/core/rules/zalantza-words.js`)
+
+- **Kind:** `LintKind.Confusable` (zalantza-hittak category, per types.js).
+- **Edit:** `replaceWith(target)` — pure word substitution.
+- **Case preservation:** the source token's case pattern is applied to the
+  target: all-lower → lower target; Title-case → Title-case target; all-UPPER →
+  UPPER target; **mixed-case → skip** (proper-noun guard, avoids touching
+  brand/surname tokens).
+- **Word-boundary safe:** the tokenizer emits whole-word tokens, so declined
+  forms (`abortoak` = `aborto` + `-ak` plural) are one token → no match → no
+  false positive. (Declined-form handling is a future enhancement, batch 3.)
+- **Priority 45** (last): structural rules (sentence-split 20 → caps 30 →
+  commas 35 → punct 40) get pass-budget priority in the iterative engine;
+  word substitution is independent of structure so order is correctness-neutral.
+- **Idempotent:** standard forms (BOLD targets) are never RED words (check 3),
+  so re-linting corrected text produces zero new lints.
+
+### Eval strategy (per §7.11)
+
+Per the §7.11 decision, zalantza rules are **unit-tested against the EBE pairs
+themselves**, not the cap-punct suite or the Elhuyar GEC benchmark (which covers
+synthetic morphology, not lexical choice). `tests/core/zalantza.test.mjs`
+(30 tests) covers: data integrity (628 pairs, frozen, 0 overlap, fragments
+absent, `gara` absent), single-word substitution across categories, case
+preservation (lower/Title/UPPER), guards (mixed-case skip, idempotency,
+compound-fragment safety, verb-collision safety, word-boundary), in-context
+sentences, and full rule-stack integration.
+
+The cap-punct suite (22/22 strict) is run as a **regression guard** only — it
+confirms the new rule doesn't break existing cap-punct behavior. It does not
+measure zalantza coverage.
+
+### What's deferred
+
+- **Batch 2 — multi-word zalantza (108 phrases):** e.g. `asanblada asanblea→biltzar`,
+  `asper egin→asper-asper egin`. Needs phrase-level detection (multi-token span
+  matching). Some entries are proper nouns (`Bizkaiko Golkoa→Bizkaiko golkoa`)
+  → gazetteer territory (F5), not pure lexical zalantza.
+- **Batch 2 — ambiguous multi-target (5 pairs):** context-dependent; need
+  disambiguation (POS or surrounding-word heuristics).
+- **Batch 3 — declined forms:** `abortoak`, `amapolak` etc. The tokenizer treats
+  these as single tokens, so the bare-loanword rule doesn't fire. Handling
+  requires either morphological segmentation or a suffix-aware matcher.
+- **`gara` disambiguation:** needs POS (is it the auxiliary "we are" or the noun
+  "train station"?) — deferred to the tokenizer/POS work (§7.8).
+
+### Files
+
+- `src/core/data/zalantza.js` — 628-pair frozen dictionary (the data)
+- `src/core/rules/zalantza-words.js` — the rule (case-preserving substitution)
+- `tests/core/zalantza.test.mjs` — 30 unit tests
+- `docs/ebe-reference/extract-zalantza.py` — reproducible extraction script
+- `docs/ebe-reference/zalantza-multi.tsv` — 108 batch-2 multi-word phrases
+- `docs/ebe-reference/zalantza-ambiguous.tsv` — 5 skipped ambiguous pairs

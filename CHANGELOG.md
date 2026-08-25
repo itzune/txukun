@@ -4,9 +4,56 @@ All notable changes to Txukun will be documented in this file.
 
 ---
 
-## [Unreleased] — Txukun Lite wired to UI
+## [Unreleased] — post-v2.0.0 (zalantza rule + Txukun Lite UI fix)
 
-### Fixed
+### Added
+- **Zalantza-hitzak rule** (`src/core/rules/zalantza-words.js`) — the first
+  EBE-grounded *general-purpose writer* rule (not ASR-specific). Corrects
+  628 doubtful words that Euskaltzaindia explicitly recommends against (Spanish/
+  French loanwords, dialectal forms, apocopes) by replacing them with their
+  standard forms: `abots→ahots`, `aborto→abortu`, `amapola→mitxoleta`,
+  `onda→uhin`, `xori→txori`. Case-preserving (lower / Title / UPPER; mixed-case
+  tokens skipped as a proper-noun guard). Word-boundary safe (declined forms like
+  `abortoak` are untouched). Priority 45 (runs after structural cap/punct rules).
+  Surfaced as `Confusable`-kind lint cards in both the model-loaded and
+  Txukun Lite (rules-only) paths.
+- `src/core/data/zalantza.js` — the 628-pair frozen dictionary, extracted
+  directly from Euskaltzaindia's EBE appendix PDF (pp. 479–490) via pdfplumber
+  character-color analysis (RED = dispreferred, BOLD = standard). Verified: 0
+  compound-fragment leaks, 0 idempotency overlap (no X→Y→Z chains), 0
+  verb/function-word collisions (`gara` = "we are" excluded). See `RESEARCH.md`
+  §7.12 for the full extraction methodology and 5-check verification.
+- `tests/core/zalantza.test.mjs` — 30 unit tests: data integrity, single-word
+  substitution across categories, case preservation, guards (mixed-case skip,
+  idempotency, compound-fragment safety, verb-collision safety, word-boundary),
+  in-context sentences, and full rule-stack integration.
+- `docs/ebe-reference/extract-zalantza.py` — reproducible extraction script.
+- `docs/ebe-reference/zalantza-multi.tsv` — 108 multi-word phrase pairs deferred
+  to batch 2.
+- `docs/ebe-reference/zalantza-ambiguous.tsv` — 5 context-dependent pairs
+  skipped.
+
+### Changed
+- `src/core/rules/index.js` — registered `zalantzaWords` in `allRules` (now 5
+  rules: sentence-boundary → sentence-initial-cap → vocative-comma →
+  terminal-punct → zalantza-words).
+- `package.json` — `test:core` now also runs `zalantza.test.mjs` (59 → 89 tests
+  total across the three core test files).
+- `TODO.md` — zalantza batch 1 marked done; estimate corrected (30–50 → 628
+  actual pairs); multi-word zalantza split out as batch 2a.
+
+### Notes
+- The cap-punct golden suite (22/22 strict) is unchanged — zalantza is
+  orthogonal to cap-punct and is unit-tested against the EBE pairs themselves
+  (per §7.11 eval strategy), not the cap-punct suite.
+- This is the first rule advancing txukun's repositioning from ASR post-processor
+  to general-purpose Basque writing assistant (Grammarly-for-Basque).
+
+---
+
+### Txukun Lite wired to UI
+
+#### Fixed
 - **Txukun Lite was unreachable from the UI**: `detectCapPunctErrors()`
   (`src/analyze.js`) bailed early with `if (!isModelReady()) return errors;`
   before reaching `correctCapPunct()`, which has a rules-only path for when the

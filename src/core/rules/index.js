@@ -11,8 +11,9 @@ import sentenceBoundary from './sentence-boundary.js';
 import sentenceInitialCap from './sentence-initial-cap.js';
 import terminalPunct from './terminal-punct.js';
 import vocativeComma from './vocative-comma.js';
+import zalantzaWords from './zalantza-words.js';
 
-export { sentenceBoundary, sentenceInitialCap, terminalPunct, vocativeComma };
+export { sentenceBoundary, sentenceInitialCap, terminalPunct, vocativeComma, zalantzaWords };
 
-/** All registered rules, in priority order (split→cap→comma→punct). */
-export const allRules = [sentenceBoundary, sentenceInitialCap, vocativeComma, terminalPunct];
+/** All registered rules, in priority order (split→cap→comma→punct→zalantza). */
+export const allRules = [sentenceBoundary, sentenceInitialCap, vocativeComma, terminalPunct, zalantzaWords];
