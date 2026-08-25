@@ -32,7 +32,7 @@ Txukun is a browser-based Basque text cleaning tool that restores capitalization
 | `src/core/types.js` | Lint + Suggestion + LintKind data model (Harper-inspired) |
 | `src/core/document.js` | Tokenizer + Document (span-based token model, iterSentences) |
 | `src/core/engine.js` | Rule engine: runRules() with iterative apply |
-| `src/core/rules/` | EBE-grounded rules: sentence-initial-cap, terminal-punct, vocative-comma |
+| `src/core/rules/` | EBE-grounded rules: sentence-boundary, sentence-initial-cap, terminal-punct, vocative-comma |
 | `src/core/clean-output.js` | Pure model output cleaning (shared by production + eval) |
 | `src/i18n.js` | Basque/English translations with dot-path resolver |
 | `src/ui-bindings.js` | DOM references, status indicator, progress bar, buttons, toast system |

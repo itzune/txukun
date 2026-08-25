@@ -8,22 +8,23 @@ model swaps) is measured against it.
 
 ## Headline
 
-| Metric | Baseline (q8) | + P1 rules | Δ |
-|---|---|---|---|
-| CONSTRAINED strict exact-match | 18/22 (81.8%) | **22/22 (100%)** | **+4** |
-| RAW exact-match | 20/33 (60.6%) | — | — |
-| CONSTRAINED exact-match (all) | 19/33 (57.6%) | 23/33 (69.7%) | +4 |
-| RULED exact-match (all) | — | 23/33 (69.7%) | — |
-| Mean norm. Levenshtein | 0.477 | 0.351 | -0.126 |
-| **Regressions** | — | **0** | — |
+| Metric | Baseline (q8) | + P1 batch 1 | + P1 batch 2 (F4) | Δ total |
+|---|---|---|---|---|
+| CONSTRAINED strict exact-match | 18/22 (81.8%) | 22/22 (100%) | **22/22 (100%)** | **+4** |
+| RAW exact-match | 20/33 (60.6%) | 21/33 (63.6%) | 21/33 (63.6%) | +1 |
+| CONSTRAINED exact-match (all) | 19/33 (57.6%) | 20/33 (60.6%) | 20/33 (60.6%) | +1 |
+| RULED exact-match (all) | — | 23/33 (69.7%) | **25/33 (75.8%)** | +6 |
+| Mean norm. Levenshtein | 0.477 | 0.351 | **0.287** | -0.190 |
+| **Regressions** | — | 0 | **0** | **0** |
 
 ### P1 rule layer — 2026-08-25
 
-Added 3 deterministic EBE-grounded rules on top of the constrained model output:
+Added 4 deterministic EBE-grounded rules on top of the constrained model output:
 
-1. `sentence-initial-cap` — uppercase first word of each sentence (EBE Maiuskulak §1.1)
-2. `terminal-punct` — add `.` (declarative) or `?` (interrogative pronoun) (EBE §1, §6)
-3. `vocative-comma` — insert comma after greeting interjections (EBE koma §3)
+1. `sentence-boundary` — split at AUX + temporal-adverb boundary (F4, EBE §1) — *batch 2*
+2. `sentence-initial-cap` — uppercase first word of each sentence (EBE Maiuskulak §1.1)
+3. `terminal-punct` — add `.` (declarative) or `?` (interrogative pronoun) (EBE §1, §6)
+4. `vocative-comma` — insert comma after greeting interjections (EBE koma §3)
 
 Fixed all 4 strict failures (c001, c024, c043, c080) with **zero regressions**:
 
@@ -100,13 +101,27 @@ that *do* fire. **P0.3/P1 fix**: decide whether normalization is opt-in; if so,
 `constrainCapPunct` needs a whitelist for legit contractions (EiTB, %42, URLs) — or
 normalization moves to a pre-processing rule step.
 
-### F4. Multi-sentence not split (2 cases)
-`c070`, `c071`: model uses commas to join clauses, doesn't insert sentence-ending
-periods to split run-on ASR input. `splitIntoSegments` only splits on *existing*
-punctuation, so unpunctuated multi-sentence input goes to the model as one segment.
-**P1 fix**: a sentence-boundary heuristic for long unpunctuated input (the
-`>25 words` branch in `splitIntoSegments` already chunks by count; needs a
-smarter boundary detector, or accept this as a model limitation).
+### F4. Multi-sentence not split (2 cases) ✅ FIXED
+`c070`, `c071`: model didn't insert sentence-ending periods to split run-on ASR input.
+
+**Research finding (RESEARCH.md §7.9):** these are two *different* problems:
+
+- **c070** (genuine multi-sentence): `"kaixo ni miren naiz atzo etorri nintzen"` —
+  a greeting+introduction followed by a tense-shifted statement. Detection signal:
+  bare finite AUX (`naiz`) + temporal adverb (`atzo`) + a second AUX (`nintzen`) later.
+  **Fixed** by `sentence-boundary` rule (priority 20): inserts `.` after the first
+  auxiliary; the iterative engine then cascades (cap → comma → punct).
+
+- **c071** (NOT a bug — golden case was wrong): `"etorri da joan da berriro etorriko da"`
+  is **asyndetic coordination** (*alborakuntza*). EBE puntuazioa §1 (footnote)
+  explicitly classifies `"Etorri da, jan du, joan da."` as a **single sentence** with
+  commas. UD `parataxis` agrees. The model's comma output was always EBE-valid; the
+  golden case's period expectation was too strict. **Fixed** by correcting the
+  expected to the EBE-validated comma version.
+
+Both now pass (strict:false). The `sentence-boundary` rule has a **second-AUX guard**
+to avoid false splits on post-positioned temporals (e.g. `"etorri naiz gaur"` =
+"I came today" — one sentence, no second auxiliary → no split).
 
 ### F5. Semantic capitalization (3 cases, known-hard)
 `c095` "lurra...eguzkiaren"→"Lurra...eguzkiaren" (inconsistent), `c096`
@@ -120,16 +135,21 @@ or a better model. Correctly marked `strict:false` — not part of the headline.
 
 1. **P0.2 is done** — the project can now *measure*. The "can't measure → paused"
    blocker is removed.
-2. **P1 rule layer is proven** — 3 deterministic EBE-grounded rules lift strict
-   accuracy from 81.8% → **100%** with zero regressions. The rule-layer thesis
+2. **P1 rule layer is proven** — 4 deterministic EBE-grounded rules lift strict
+   accuracy from 81.8% → **100%** with zero regressions, and all-case exact-match
+   from 57.6% → **75.8%** (mean Levenshtein 0.477 → 0.287). The rule-layer thesis
    (rules close the gaps the neural model leaves) is validated.
 3. **The rule engine is wired into production** (`src/models.js:correctCapPunct`)
    — the app now applies rules on top of model output. If the model isn't loaded
    yet, rules still provide basic cap+punct ("Txukun Lite" mode).
 4. **q8 ships as-is** — no dtype investigation needed (Finding 1).
-5. **Remaining failures are all `strict:false`** — multi-sentence splitting (F4),
-   normalization policy (F3), semantic capitalization (F5). These are P2+ work.
+5. **Remaining failures are all `strict:false`** — normalization policy (F3:
+   c081–c083, constrainCapPunct rejects legit contractions) and semantic
+   capitalization (F5: c091, c095, c096, needs gazetteer/world knowledge).
+   These are P2+ work.
 6. **constrainCapPunct needs a normalization policy** (Finding 3) — feeds P0.3.
+7. **Golden suite was corrected** (c071) — research found the original period
+   expectation contradicted EBE §1 (asyndetic coordination = one sentence).
 
 ## Reproduce
 

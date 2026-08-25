@@ -1004,3 +1004,139 @@ The minimal `src/core/` engine is **4 small files**, not the 4 *systems* `TODO.m
 | `src/core/rules/*.js` | `linting/*.rs` | one file per rule, each `export default { lint(doc), description }` |
 
 **No `expr.js` for batch 1.** No `tokenizer.js` with POS tagging. The first rule (`sentenceInitialCap`) is ~15 lines and targets the 3 strict F1 failures (c001, c024, c043) — lifting the headline from 81.8% toward ~95% and proving the rule-layer thesis before any abstraction investment.
+
+---
+
+## 7.9 F4 — Esaldi-mugaren detekzioa (sentence-boundary detection)
+
+Research conducted before implementing the `sentence-boundary` rule (P1 batch 2).
+The question: in unpunctuated Basque ASR text, *when* is a boundary a sentence
+break vs. a clause comma? This is a detection problem with false-positive risk,
+unlike batch 1's mechanical rules.
+
+### The two F4 failures are different problems
+
+**c070** `"kaixo ni miren naiz atzo etorri nintzen"` — genuine multi-sentence.
+The model outputs one flat sentence. The boundary after `naiz` (end of "I am
+Miren") before `atzo` (yesterday) is invisible to the model.
+
+**c071** `"etorri da joan da berriro etorriko da"` — **not a bug**. The golden
+case expected periods, but the model's comma output is EBE-valid.
+
+### Finding 1: EBE explicitly validates the c071 comma version
+
+EBE puntuazioa §1, footnote 1 (line 28-34 of `docs/ebe-reference/ebe-punt.txt`)
+defines *esaldia* (sentence) and gives this exact example:
+
+> **alborakuntzaz:** Ezer ez daki; isilik dago. **Etorri da, jan du, joan da.**
+
+EBE classifies "Etorri da, jan du, joan da." as a **single sentence** —
+*perpaus elkartua → juntaduraz → alborakuntzaz* (asyndetic coordination: clauses
+joined by commas without conjunctions). Our c071 pattern is identical. The
+model's `Etorri da, joan da, berriro etorriko da.` is EBE-valid. **The golden
+case's period expectation was too strict — corrected to the comma version.**
+
+### Finding 2: UD `parataxis` agrees
+
+Universal Dependencies `parataxis` relation
+(https://universaldependencies.org/u/dep/parataxis.html):
+
+> "The parataxis relation is used for a pair of what could have been standalone
+> sentences, but which are being treated together as a single sentence. This may
+> happen because... these clauses are joined by punctuation such as a colon or
+> comma, or not delimited by punctuation at all."
+
+Asyndetic clauses joined by commas = **one sentence** (first clause is head,
+rest are `parataxis` dependents). Both EBE and UD agree.
+
+### Finding 3: ixa-pipe-tok cannot segment unpunctuated text
+
+IXA-pipes (the standard Basque NLP toolkit, https://ixa2.si.ehu.eus/ixa-pipes/)
+provides `ixa-pipe-tok`, a "multilingual rule-based tokenizer and sentence
+segmenter." But its sentence segmentation is **punctuation-based** — it splits
+on `.!?` and only has rules to *prevent* false breaks (abbreviations,
+non-breaking exceptions). It cannot detect boundaries in unpunctuated ASR text.
+No off-the-shelf Basque unpunctuated-text segmenter exists. → We must build the
+heuristic ourselves.
+
+### Finding 4: The c070 detection signal — AUX + TEMPORAL + second AUX
+
+Token analysis of c070:
+
+| idx | token | role |
+|---|---|---|
+| 0 | kaixo | greeting |
+| 1 | ni | pronoun (I) |
+| 2 | miren | name |
+| 3 | **naiz** | **AUX finite** (1sg present *izan*) |
+| 4 | **atzo** | **TEMPORAL** (yesterday, past) |
+| 5 | etorri | verb participle |
+| 6 | **nintzen** | **AUX finite** (1sg past *izan*) |
+
+In Basque SOV order, the finite auxiliary is clause-final. `naiz` ends the
+clause "ni Miren naiz" (I am Miren, present). `atzo` (yesterday, past) begins a
+new clause with its own past auxiliary `nintzen`. The tense shift
+(present → past) is the semantic signal.
+
+**Heuristic:** a bare finite auxiliary (AUX1) immediately followed by a temporal
+adverb (TEMPORAL), where a second finite auxiliary (AUX2) appears later in the
+same sentence → insert `.` after AUX1.
+
+### Finding 5: The false-positive guard is essential
+
+The naive signal "AUX + TEMPORAL → split" **over-splits**. Basque allows
+post-positioned temporals:
+
+> "etorri naiz gaur" = "I came today" — ONE sentence
+
+Here `naiz`(AUX) + `gaur`(TEMPORAL) but no second auxiliary. The **second-AUX
+guard** (require AUX2 to exist after the temporal) prevents this false split:
+"etorri naiz gaur" has only one finite verb → no split. ✓
+
+### Finding 6: Bare-auxiliary matching excludes subordinate clauses
+
+Subordinate clauses suffix the auxiliary: `-la`/`-ela` (completive: "dela"),
+`-lako` (causal: "delako"), `-arren` (concessive). These suffixed forms
+("dela", "naizela") are **not** in the bare-form set, so exact-token match
+excludes them. Only main-clause auxiliaries trigger. (No morphology analyzer
+needed — the set membership test is sufficient.)
+
+### Finding 7: Finite auxiliary paradigm verified
+
+Full finite auxiliary paradigm (present + past, all persons, *izan*/*edun*/*egon*)
+verified from Buber's Basque Page (https://www.buber.net/Basque/Euskara/lang.lt.php)
+and Euskaltzaindia grammar. ~50 common bare forms. These are unambiguous as
+standalone tokens (no overlap with nouns/adjectives). Synthetic lexical verbs
+(joan/etorri/ibili finite forms: noa, doa, nindoan…) are **excluded** from
+batch 1 — only the auxiliaries izan/edun/egon, which are the reliable
+clause-final markers.
+
+### Finding 8: Asyndetic coordination (c071) is correctly NOT split
+
+For c071 `etorri da joan da berriro etorriko da`: `da`(AUX1) is followed by
+`joan` (a verb participle, **not** a temporal adverb). Condition 2 (AUX1 +
+TEMPORAL) fails → no split. This is correct: EBE says it's one sentence. The
+commas come from the model, not the rules.
+
+### Architecture: no pipeline change needed
+
+The `sentence-boundary` rule fits the existing rule engine as a 5th rule
+(priority 20, runs before cap=30 / comma=35 / punct=40). The iterative re-lint
+model cascades naturally:
+
+1. `sentence-boundary` inserts `.` after AUX1 → "kaixo ni miren naiz. atzo..."
+2. `sentence-initial-cap` capitalizes "Atzo" (new sentence start)
+3. `vocative-comma` adds comma after "Kaixo"
+4. `terminal-punct` adds final `.`
+
+No offset bookkeeping, no pipeline change. The split rule is ~120 lines
+including the auxiliary/temporal sets.
+
+### Result
+
+- **c070** ✓ PASS — exact match `"Kaixo, ni Miren naiz. Atzo etorri nintzen."`
+- **c071** ✓ PASS — golden corrected to EBE-valid comma version
+- RULED all exact-match: 23/33 (69.7%) → **25/33 (75.8%)**
+- Mean Levenshtein: 0.351 → **0.287**
+- Strict: held at 22/22 (100%) — both fixed cases are `strict:false`
+- **Zero regressions**

@@ -186,6 +186,46 @@ test('c065: "Sagarra, laranja eta banana erosi ditut." unchanged', () => {
   eq(corrected, 'Sagarra, laranja eta banana erosi ditut.');
 });
 
+// ── Rule: sentence-boundary (F4) ────────────────────
+
+console.log('\nsentence-boundary:');
+test('c070: "kaixo ni miren naiz atzo etorri nintzen" → split', () => {
+  const { corrected } = runRules('Kaixo ni Miren naiz atzo etorri nintzen.', allRules);
+  eq(corrected, 'Kaixo, ni Miren naiz. Atzo etorri nintzen.');
+});
+
+test('does NOT split post-positioned temporal (no 2nd AUX)', () => {
+  // "etorri naiz gaur" = "I came today" — ONE sentence (no second auxiliary)
+  const { corrected, lints } = runRules('etorri naiz gaur', allRules);
+  eq(corrected, 'Etorri naiz gaur.');
+  // No split lint should fire (cap+punct do, but not sentence-boundary)
+  const splits = lints.filter((l) => l.message.includes('Esaldi-muga'));
+  eq(splits.length, 0, 'no false split');
+});
+
+test('does NOT split asyndetic coordination (c071)', () => {
+  // "etorri da joan da berriro etorriko da" — da + joan (NOT temporal)
+  // EBE: alborakuntza = ONE sentence with commas (commas come from the model,
+  // not the rules; here we only verify sentence-boundary does NOT split)
+  const { corrected, lints } = runRules('etorri da joan da berriro etorriko da', allRules);
+  eq(corrected, 'Etorri da joan da berriro etorriko da.');
+  const splits = lints.filter((l) => l.message.includes('Esaldi-muga'));
+  eq(splits.length, 0, 'no split — asyndetic coordination is one sentence');
+});
+
+test('does NOT split subordinate-clause suffixed aux (dela)', () => {
+  // "esan du etorri dela" = "(s)he said (s)he came" — dela is suffixed, not bare
+  const { corrected, lints } = runRules('esan du etorri dela', allRules);
+  eq(corrected, 'Esan du etorri dela.');
+  const splits = lints.filter((l) => l.message.includes('Esaldi-muga'));
+  eq(splits.length, 0, 'no split — subordinate clause');
+});
+
+test('splits with past-tense shift (nintzen + gero + AUX)', () => {
+  const { corrected } = runRules('ni etorri nintzen gero joan nintzen', allRules);
+  eq(corrected, 'Ni etorri nintzen. Gero joan nintzen.');
+});
+
 // ── Rule: vocative-comma ────────────────────────────
 
 console.log('\nvocative-comma:');

@@ -42,7 +42,7 @@
     {"id":"c066","input":"mahaian daude liburua koadernoa eta boligrafoa","expected":"Mahaian daude liburua, koadernoa eta boligrafoa.","category":"punct-comma-enum","strict":true},
 
     {"id":"c070","input":"kaixo ni miren naiz atzo etorri nintzen","expected":"Kaixo, ni Miren naiz. Atzo etorri nintzen.","category":"multi-sentence","strict":false,"note":"Segmentazioa aldakorra — strict=false; splitIntoSegments + per-esaldi maiuskulak probatzen ditu"},
-    {"id":"c071","input":"etorri da joan da berriro etorriko da","expected":"Etorri da. Joan da. Berriro etorriko da.","category":"multi-sentence","strict":false},
+    {"id":"c071","input":"etorri da joan da berriro etorriko da","expected":"Etorri da, joan da, berriro etorriko da.","category":"multi-sentence","strict":false,"note":"EBE puntuazioa §1 oina: alborakuntza (asyndetic coordination) = esaldi BAKARRA komekin. 'Etorri da, jan du, joan da.' EBE-k esaldi elkartutzat jotzen du. Aurreko bertsioak puntuak espero zituen, baina EBE-k komak baliozkotzat jotzen ditu (2026-08-25 berrikuspena, RESEARCH.md §7.9)."},
 
     {"id":"c080","input":"kaixo egun on guztioi","expected":"Kaixo, egun on guztioi.","category":"normalization","strict":true,"note":"Model card adibidea — cap+punct hutsa (hitz-aldaketarik ez)"},
     {"id":"c081","input":"faktoria e i te beko irratian entzuten da","expected":"Faktoria EiTBko irratian entzuten da.","category":"normalization","strict":false,"note":"Model card — laburdura-zabalkunea. OHARRA: constrainCapPunct-ek baztertzen du (hitz-aldaketa); raw=pass, constrained=fail espero da"},

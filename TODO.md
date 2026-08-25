@@ -83,11 +83,13 @@ Jatorria: `XUXEN_ISSUES.md` eta `ISSUE_LOG.md`.
 - [x] **`src/core/rules/terminal-punct.js`** — Amaierako puntuazioa: deklaribo→`.`, galdera-pronominak (`zer/nora/noiz/non/nola/zergatik/zien`)→`?`. EBE Puntuazio-markak §1, §6
 - [x] **`src/core/rules/vocative-comma.js`** — Bokatiboa: agurra/eskerra (kaixo, agur, gabon) + hitza → koma. EBE koma §3
 - [x] **`src/core/rules/asr-artifacts.js`** — ASR artifactuak (`<unk>`, `<pad>` etab.) — P0.3-ko `cleanModelOutput` berrerabili (jada `src/core/clean-output.js`-en dago)
-- [x] **`src/core/rules/index.js`** — Rule registry: `allRules = [sentenceInitialCap, vocativeComma, terminalPunct]`
-- [x] **`tests/core/rule-engine.test.mjs`** — 30 unit test (instant, eredu gabe): tokenizer, iterSentences, 3 arauak, F1 simulazioak, regression guard, idempotency
+- [x] **`src/core/rules/index.js`** — Rule registry: `allRules = [sentenceBoundary, sentenceInitialCap, vocativeComma, terminalPunct]`
+- [x] **`src/core/rules/sentence-boundary.js`** — F4: AUX + temporal adberbioa + bigarren AUX → puntua (RESEARCH.md §7.9). Second-AUX guard-ak saihestu post-positioned temporal false-positiveak ("etorri naiz gaur"). c070 konpontzen du; c071 ez du split-ten (alborakuntza = esaldi bakarra, EBE §1)
+- [x] **`tests/core/rule-engine.test.mjs`** — 35 unit test (instant, eredu gabe): tokenizer, iterSentences, 4 arauak, F1 simulazioak, F4 split + false-positive guard-ak, regression guard, idempotency
 - [x] **Produkzio-integrazioa** — `src/models.js:correctCapPunct`-en rule engine txertatuta. Eredua kargatu gabean ere arauak funtzionatzen du ("Txukun Lite" modua)
 - [x] **Eval integrazioa** — `tests/cap-punct/eval.mjs`-en RULED metrika gehituta (RAW / CONSTRAINED / RULED). `--no-rules` flag-a
-- [ ] **`src/core/rules/` EBE oinarritutako arauak** — batch 2+, iturria: `docs/ebe-reference/` eta `RESEARCH.md` §7.7 (ez egiaztatu gabeko espekulazioak):
+- [x] **c071 golden kasua zuzenduta** — Ikerketak (§7.9) erakutsi zuen jatorrizko periodak-esperantza EBE-ren aurkakoa zela: alborakuntza (asyndetic coordination) esaldi bakarra da komekin (EBE puntuazioa §1 oina). Expected komak bertsiora aldatuta
+- [ ] **`src/core/rules/` EBE oinarritutako arauak** — batch 3+, iturria: `docs/ebe-reference/` eta `RESEARCH.md` §7.7 (ez egiaztatu gabeko espekulazioak):
     - [ ] *Kalko lexiko-semantikoak* (`ebe-kal.txt`): `balore→balio`, `froga/proba` bereizketa, `*pena merezi→merezi`, `*ospatu bilera→bilera egin`
     - [ ] *Kalko morfosintaktikoak*: `*Nekatuta naiz→Nekatuta nago`, `*Aspertu naiz, joaten gara?→Joango gara?`, pasibo okerrak (`*Poliziagatik atxilotua izan zen→Poliziak atxilotu zuen`), `ere` lokailuaren posizioa (`*Ere daude→...ere badaude`)
     - [ ] *Zalantza-hitzak* (`ebe-zal.txt`): `abots→ahots`, `aborto→abortu`, `ahalderatu→ahalbidetu` — Hiztegiak gomendatutako formak

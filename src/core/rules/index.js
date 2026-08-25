@@ -7,11 +7,12 @@
  * @module txukun/core/rules
  */
 
+import sentenceBoundary from './sentence-boundary.js';
 import sentenceInitialCap from './sentence-initial-cap.js';
 import terminalPunct from './terminal-punct.js';
 import vocativeComma from './vocative-comma.js';
 
-export { sentenceInitialCap, terminalPunct, vocativeComma };
+export { sentenceBoundary, sentenceInitialCap, terminalPunct, vocativeComma };
 
-/** All registered rules, in priority order (cap→comma→punct). */
-export const allRules = [sentenceInitialCap, vocativeComma, terminalPunct];
+/** All registered rules, in priority order (split→cap→comma→punct). */
+export const allRules = [sentenceBoundary, sentenceInitialCap, vocativeComma, terminalPunct];
