@@ -4,57 +4,129 @@ All notable changes to Txukun will be documented in this file.
 
 ---
 
-## [Unreleased] — Tier 1 frequency re-ranking for autocorrect
+## [2.0.0] — 3-model architecture + Grammarly-style editor + rule engine — 2026-08-25
 
-Implements Tier 1 of [`CORRECTOR_STRATEGY.md`](./CORRECTOR_STRATEGY.md): replace the
-blind `suggestions[0]` autocorrect with corpus-frequency re-ranking. No new
-dependencies; all inference stays client-side.
+Txukun 2.0 is a ground-up rebuild. The app moves from a simple two-column
+cap-punct + spell-check tool to a **Grammarly-style editor** with a **3-model
+neural pipeline** (GECToR grammar + BERTeus spelling + MarianMT cap-punct),
+**per-model confidence thresholds**, and a **deterministic rule engine** grounded
+in Euskaltzaindia's EBE reference.
 
-### Fixed
-- **`batzutan`-class autocorrect bugs** (`XUXEN_ISSUES.md` §1): `autoCorrect()`
-  no longer blindly takes Hunspell's first suggestion. For `batzutan`, Hunspell
-  proposes `batsutan` (wrong, an affix-generated form absent from the corpus)
-  and never proposes the correct `batzuetan`. The new re-ranker generates
-  edit-distance-1 candidates against the wordlist and picks `batzuetan`
-  (corpus count 14,790) over `batsutan` (count 0) by frequency. Verified for the
-  full §9 test set in `scripts/verify-autocorrect.mjs`.
+All inference stays client-side (Transformers.js + ONNX Runtime Web WASM).
+
+### Added — 3-model neural pipeline
+- **GECToR grammar correction (Tier 3)** — browser pipeline loading a GECToR
+  sequence-tagging model from HuggingFace Hub. Detects grammar errors via a
+  detection head (P(INCORRECT) confidence) and applies tag-based edits. Full
+  model (1M training pairs, F0.5=90.2). License: CC-BY-NC-SA 4.0 (derivative of
+  Elhuyar data).
+- **BERTeus neural re-ranking (Tier 2)** — replaces the wllama/futo LM with an
+  int4-quantized BERTeus ONNX model (85 MB). Re-ranks spelling candidates by
+  contextual cosine similarity. Browser validation: 29/30 match Python reference.
+- **Per-model confidence thresholds** — each category (grammar, spelling,
+  cappunct) has a calibrated minimum confidence; errors below threshold are
+  silently suppressed. Calibrated via grid search on a 220-case benchmark
+  (22.7% → 38.6% accuracy, +15.9% absolute; over-corrections 139→66, false
+  positives 12→1). cappunct lowered from 1.00→0.80 with per-segment confidence.
+- **Cache API** for GECToR ONNX + BERTeus embeddings — avoids re-fetch on reload.
+- **GECToR detection heatmap** — visualization of detection scores.
+
+### Added — P1 rule engine (deterministic, EBE-grounded)
+- **Rule engine** (`src/core/`) — Harper-inspired Lint+Suggestion architecture
+  with iterative re-lint (apply one suggestion → re-tokenize → re-lint → repeat).
+  Unicode-aware tokenizer, span-based Document model, 3-variant edit enum
+  (replaceWith / insertAfter / remove). 4 small files: `types.js`, `document.js`,
+  `engine.js`, `rules/*.js`.
+- **4 EBE-grounded rules** on cap-punct model output:
+  1. `sentence-boundary` — split at bare-finite-AUX + temporal-adverb +
+     second-AUX boundary (EBE puntuazioa §1). Second-AUX guard prevents false
+     splits on post-positioned temporals ("etorri naiz gaur" = one sentence).
+  2. `sentence-initial-cap` — uppercase first word of each sentence
+     (EBE Maiuskulak §1.1).
+  3. `terminal-punct` — add `.` (declarative), `?` (interrogative pronoun), or
+     `!` (exclamatory greeting); also replaces `.`→`!` for vocative greetings
+     (EBE puntuazioa §1, §2.3, §6).
+  4. `vocative-comma` — insert comma after greeting interjections and multi-word
+     phrases (kaixo, agur, gabon, eskerrik asko, egun on…) (EBE koma §3).
+- **"Txukun Lite" mode** — rules apply even when the neural model isn't loaded,
+  providing basic cap+punct+comma correction without the model download.
+- **Cap-punct golden-case suite + eval harness** (`tests/cap-punct/`) — 33 cases
+  with strict/all split, RAW/CONSTRAINED/RULED metrics, `--no-rules` flag.
+
+  **Result**: strict accuracy 81.8% → **100%** (22/22), all-case 57.6% → **81.8%**
+  (27/33), mean normalized Levenshtein 0.477 → **0.224**, zero regressions.
+  The rule-layer thesis (deterministic rules close the gaps the neural model
+  leaves) is validated.
+
+### Added — Grammarly-style editor & UX
+- **Idaztian markdown editor** (CodeMirror 6) with live preview — replaces the
+  plain textarea. Error decorations render as red/amber/blue wavy underlines via
+  a custom StateField; positions auto-remap on edit.
+- **Suggestions panel** — clickable cards for each detected error, sorted by
+  position, de-overlapped (earliest + longest span wins).
+- **Document management** — multi-document support (create, import, rename,
+  switch between documents).
+- **Welcome content** for first-time visitors.
+- **Error categories** unified: `grammar` | `spelling` | `cappunct`, each with
+  category-specific underline color.
+
+### Added — Spelling improvements
+- **Corpus-frequency re-ranking (Tier 1)** — `autoCorrect()` no longer blindly
+  takes Hunspell's first suggestion. Candidate pool is
+  `(edit-distance-1 variants ∩ wordlist) ∪ (Hunspell suggestions)`, scored as
+  `β·log(freq+1) + δ·(1/(1+edit_distance))`. Fixes `batzutan`-class bugs where
+  Hunspell proposes `batsutan` (wrong) and never proposes `batzuetan` (correct).
+- **Hyphen-split spell checking** — compound words (`EiTB-ko`, `hitz-armak`)
+  validated by checking each part independently.
+- **Number-suffix skip** — short words (≤5 chars) after numerics treated as
+  Basque suffixes (`42koa`, `15ekoa`) and not flagged.
+- **Case-insensitive acronym lookup** — `eitb` finds `EITB`, `EiTB` finds `EITB`.
+- New pure helpers in `src/spell.js`: `edits1`, `levenshtein`, `matchCase`,
+  `rankCandidates`, `checkWord`.
 
 ### Changed
-- **`autoCorrect()` re-ranks candidates** (`src/spell.js`): the candidate pool
-  is now `(edit-distance-1 variants ∩ wordlist) ∪ (Hunspell suggestions)`, scored
-  as `score = β·log(freq+1) + δ·(1/(1+edit_distance))` with `β=0.3, δ=0.5`
-  (named `SCORE_BETA`/`SCORE_DELTA` constants, ready for grid-search). Hunspell
-  is demoted to a *secondary* candidate source — it is no longer the sole
-  generator nor the ranker. A confidence gate (`freq > 0` OR `ed === 1`) prevents
-  forcing rare zero-frequency edit-distance-2 words onto the user; words with no
-  confident candidate are left unchanged (graceful degradation).
-- **Single dictionary fetch**: `loadSpellChecker()` now fetches
-  `eu-words-freq.txt` once and builds both the main-thread frequency `Map` (for
-  re-ranking) and the worker's detection `Set` (the worker parses the `word\tcount`
-  word column). The redundant `eu-words.txt` fetch is dropped (~1.6 MB saved at
-  runtime; the file is retained in the repo as legacy). The two files are
-  byte-identical word sets (160,459 words).
-- New exported pure helpers in `src/spell.js`: `edits1`, `levenshtein`,
-  `matchCase`, `rankCandidates` (unit-testable in Node without the Worker).
+- **Cap-punct pipeline**: text split into sentences before the MarianMT model;
+  markdown stripped before all models so they never see syntax markers.
+- **Suggestion merging**: spelling + cap-punct merged into a single suggestion
+  for sentence-initial words; cap-punct capitalization merged into grammar
+  corrections too.
+- **Single dictionary fetch**: `loadSpellChecker()` fetches `eu-words-freq.txt`
+  once, building both the frequency `Map` (re-ranking) and worker detection `Set`.
+  Redundant `eu-words.txt` fetch dropped (~1.6 MB saved at runtime).
+- **Spell worker**: `loadSpellChecker()` now waits for the Hunspell WASM worker to
+  fully initialize before returning (fixes race condition where early "Correct"
+  clicks silently skipped spell corrections).
+- **idaztian** dependency switched from `file:` to npm `^1.4.0` (then `1.4.1`
+  with relaxed `@huggingface/transformers` peer dep).
 
-### Known limitations (deferred to Tier 2 — neural re-ranking via wllama)
-- **Proper-noun diacritic restoration** (e.g. `inaki → iñaki`): on the shipped
-  160k wordlist `Iñaki` has corpus count 0, so frequency re-ranking picks
-  `izaki` (count 1,831) instead. This is context-dependent (name vs. word) and
-  needs the LM. Since `Iñaki` is in Xuxen's `eu.dic`, the previous
-  `suggestions[0]` path may have restored it via Hunspell's REP/TRY tables — a
-  possible regression for this specific class. Mitigation options: Tier 2 LM, or
-  an optional diacritic-aware edit-distance refinement (not in the Tier 1 spec).
-- **Genuine multi-candidate ambiguity** (e.g. `mutika → musika` instead of
-  `mutila`): frequency alone picks the more common word; only context (LM)
-  resolves it. Documented in `CORRECTOR_STRATEGY.md` §9.
+### Fixed
+- **Cap-punct hallucinations**: reject hallucinated repeated punctuation; fix
+  all-caps hallucination; don't reject legitimate acronyms in the constraint layer.
+- **Cap-punct constraint**: quote stripping + LCS-based alignment fix; ignore
+  punctuation hints inside heading lines.
+- **UI**: cards no longer squished by `flex-shrink` (added `flex-shrink:0`).
+- **Green annotation**: pre-model spell corrections now correctly display green
+  underlines in the output.
+- **`SER`** removed from word list (Spanish false positive).
 
-### Added
-- `scripts/verify-autocorrect.mjs` — Node verification of the §9 test cases
-  against the shipped wordlist, importing the real `spell.js` helpers
-  (Hunspell stubbed to `[]` to isolate the new logic).
+### Known limitations
+- **Proper-noun diacritic restoration** (`inaki → iñaki`): frequency re-ranking
+  picks `izaki` (count 1,831) over `Iñaki` (count 0). Context-dependent — needs
+  the LM. (BERTeus re-ranking partially addresses this.)
+- **Genuine multi-candidate ambiguity** (`mutika → musika` vs `mutila`):
+  frequency/neural picks the more common word; only context resolves it.
+- **Remaining cap-punct failures** (all `strict:false`): normalization policy
+  (EiTB, %42, URLs) and semantic capitalization (institutions, astral bodies —
+  needs gazetteer). These are P2+ work.
+- **GECToR license** (CC-BY-NC-SA 4.0) restricts commercial use.
 
----
+### Documentation
+- `RESEARCH.md` — §7.5–§7.10: Harper architecture study, 2026 GEC field survey,
+  EBE rule sources, Harper implementation-level design read, F4 sentence-boundary
+  detection, F2 greeting punctuation.
+- `tests/cap-punct/BASELINE.md` — eval methodology + results across 3 rule batches.
+- `docs/ebe-reference/` — EBE puntuazioa/komak/zalantzak reference extracts.
+- `CORRECTOR_STRATEGY.md` — Tier 1/2/3 spelling & grammar strategy.
 
 ## [1.5.1] — Hunspell WASM worker ready fix + green annotation — 2026-06-29
 
