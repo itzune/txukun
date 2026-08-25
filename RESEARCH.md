@@ -1778,3 +1778,213 @@ bikoteek behar dute arau berria. ~17 Type C + ~98 single berriak zuzenean
 **Total**: ~146 bikote berri gehituko dira (batch 1-en 628 + 146 = ~774
 guztira). 0 idempotentzia-arrisku, 0 aditzi-kolisio berri, 0 erregresio
 esperoa (arau berria priority 46-n, single-word-aren atzetik).
+
+## 7.14 Berria Estilo Liburua — bigarren iturri administraria (F5 + zalantza-osagarria)
+
+*Research conducted 2026-08-27. Berria.eus-eko Estilo Liburua aztertuta EBEren
+ondoren bigarren autoritate-iturri gisa, F5 maiuskula-gazetteer-erako eta
+zalantza-hiztegiaren osagarrirako.*
+
+### Atzeoharra — zergatik aztertu Berria
+
+EBE (Euskara Batuaren Eskuliburua) jadanik erregela-iturri autoritatea da
+(§7.7, §7.12, §7.13) eta P1 arau-geruzaren oinarria da. Baina EBEk ez ditu
+estaltzen kazetaritza-estiloko arau praktiko guztiak: izen berezien idazkera
+(toponimoak, pertsona-izenak, erakundeak, kirol-taldeak), zenbakien formatua,
+laburdurak, akronimoak. Euskal Herriko egunkari nagusiak, **Berria**-k, bere
+estilo-liburua publikoki argitaratzen du linean, eta EBEren osagarri naturala
+da: kazetariek egunero aplikatzen dituzten arau konkretu eta praktikoak
+biltzen ditu, adibide ugarirekin.
+
+Helburua: Berriaren Estilo Liburuaren atalak **txukun-en errepertoriora
+mapatzea** — zein atal eman dezakeen datu zuzena F5 gazetteer-erako, zein
+osatu dezakeen zalantza-hiztegia, eta zein geratu behar den etorkizuneko
+estilo-arauentzat.
+
+### Gunearen egitura eta URL mapa
+
+Berriaren Estilo Liburua `https://www.berria.eus/estiloliburua`-n dago.
+Atalen URL-egitura bi motatakoa da:
+
+| Mota | Aurrizkia | Atalak |
+|---|---|---|
+| Liburu-kapituluak | `/eliburua/` | `ortotipografia`, `idazkuntza`, `onomastika`, `informazioa-eta-interpretazioa`, `deontologia`, `internet`, `bibliografia-hautatua` |
+| Atal autonomoak | (erroa) | `mundua`, `euskal-herria`, `hiztegia`, `gaikako-hiztegiak`, `galdera-erantzunak`, `azken-aldaketak` |
+
+**Oharra teknikoa**: hasieran 404 akatsa `/eliburua/` aurrizkirik gabe;
+aire-aurreko bisitak orri nagusia berreskuratu behar izan zuen URL zuzenak
+aurkitzeko. Atal autonomoetako sarrera indibidualak `/azken-aldaketak/hiztegia/{id}`
+URLetan daude (adib. `/azken-aldaketak/hiztegia/10599`).
+
+### Atalez ataleko azterketa → txukun-en kasuak
+
+#### Ortotipografia (`/eliburua/ortotipografia`, ~6.500 hitz)
+
+**Atalik emankorrena txukun-erako.** Eduki nagusiak:
+
+- **LETRA ETZANA (italikak)**: tituluak, atzerriko hitzak, aldakiak.
+- **LETRA LARRIA / XEHEA / MAIUSKULA TXIKIA (maiuskulak)**: izen berezien
+  taxonomia osoa — pertsonak, animaliak, lekuak, gorputz zerutiarrak,
+  erakundeak, gertakariak, tituluak, dokumentuak, historia, gaiak,
+  markak, objektuak; minuskula-arauak; versal txikia (small caps).
+  → **F5 gazetteer-erako datu-iturri zuzena**.
+- **ZENBAKIAK**: deklinabidea, datak, orduak, kirol-emaitzak, ehunekoak,
+  digituak vs letrak, zenbaki erromatarrak, dirua, ordinalak, bereizgailuak.
+  → Etorkizuneko zenbaki-formateatze-arauetarako (orain P1-eskopotik kanpo).
+- **IZEN BEREZIAK NOLA DEKLINATU**: izen berezien deklinabidea.
+  → F5 gazetteer-aren osagarria (declined-form handling, batch 3+).
+- **LABURTZAPENAK**: laburdurak, siglak eta akronimoak (nola idatzi,
+  deklinatu, irakurri).
+  → Etorkizuneko arau potentziala (siglen puntua, deklinabidea).
+
+**Txukun-erako mapaketa**:
+- Maiuskulen taxonomia → **F5 gazetteer** (§7.13-etik datozen 35 izen bereziekin batera).
+  EBEren maiuskulak sarrerak (§7.7, id=1023) baino askoz zabalagoa eta adibide gehiagorekin.
+- Zenbaki-formatua → P3+ (orain ez da larria).
+- Laburdurak/siglak → P3+ (orain ez da larria).
+
+#### Idazkuntza (`/eliburua/idazkuntza`, ~16.000 hitz)
+
+Atalik luzeena, baina txukun-en oraingo P1 ortografia-eskoporik **gutxien
+zuzenki erabilgarria**. Estilo- eta idazkera-arauetara bideratuta:
+
+- **HIZKUNTZA EREDUA** (language model): eredu lexikoaren aukeraketa.
+- **ESTILOA**: argitasuna, laburtasuna, aditz-estiloa, ahots aktiboa,
+  orainaldia, testu-hasierak, erritmoa, inpertsonaltasuna, errepikapenik/
+  kliseerik/argotik ez.
+- **TESTUAREN EGITURA: PARAGRAFOA**: paragrafoen antolaketa.
+- **ESALDIAREN ANTOLAMENDUA**: ordena, aposizioak, aipamenak.
+
+**Txukun-erako mapaketa**: Etorkizuneko **estilo-arauentzat** (P4+), ez P1.
+Hauek ez dira ortografia-akatsak zuzentzaileak, baizik eta estilo-gomendioak
+(adib. "erabili ahots aktiboa", "saihestu errepikapena"). Oraingo P1
+motorrarentzat (ortografia + puntuazioa + maiuskulak + zalantza) ez dute
+eragin zuzenik. Baliteke etorkizunean "style suggestions" gisa gehitzea
+(Grammarly-ren tone-detector-en antzera), baina hori P4-ren geruza da.
+
+#### Onomastika (`/eliburua/onomastika`)
+
+Izen berezien idazketa-arauak: pertsonak, erakundeak, gertakariak, lanak,
+kirol-taldeak.
+
+**Txukun-erako mapaketa**: **F5 gazetteer-erako datu-iturri zuzena**,
+Ortotipografiaren maiuskulen taxonomiarekin batera. Kirol-taldeen izenak
+(erreala, athletic, osasuna — minuskulak, ez maiuskulak izen arruntetan)
+berezi garrantzitsuak dira gazetteer-erako.
+
+#### Mundua (`/mundua`) eta Euskal Herria (`/euskal-herria`)
+
+Leku-izenen gazetteerrak: munduko eta Euskal Herriko toponimoen euskal izenak
+eta demonym formak (jendeari buruzko izenak: donostiarra, bilbotarra, etab.).
+
+**Txukun-erako mapaketa**: **F5 toponimo-gazetteer**. Hauek zuzenki
+erabilgarriak dira maiuskula-arauetarako: toponimoak maiuskulaz hasten dira,
+baina ez dute beti letra larri osoa behar (adib. "Euskal Herria" baina
+"euskal" adjektibo gisa minuskulaz). EBEren §7.7 maiuskulak sarrerarekin
+batera, toponimo-gazetteer honek F5 araua elikatuko luke.
+
+#### Hiztegia (`/hiztegia`) — urrez mekanikoki irakurria
+
+A-Z hiztegi modukoa, zalantza-hitzak eta gomendioak biltzen dituena.
+**Aurkikuntza gakoa**: sarrerak **mekanikoki irakurgarriak** dira, anotazio-
+sinbolo estandarizatuekin:
+
+| Sinboloa | Esanahia |
+|---|---|
+| `*` | ez erabili (adib. `antigitanismo*`) |
+| `✗` | hobetu beharrekoa |
+| `→` | hobe (adib. `munizipalismo → munizipalista`) |
+| `[e.]` | erabili |
+| `[h.]` | hobetsi |
+
+Sarrera indibidualak `/azken-aldaketak/hiztegia/{id}` URLetan, formatua:
+`headword, gomendatutako forma` (adib. `munizipalismo, munizipalista`).
+
+**Txukun-erako mapaketa**: **Zalantza-hiztegiaren osagarria**. EBEren
+zalantza atala (§7.12, §7.13 — jadanik 628 bikote erauzita) Berriaren
+hiztegiarekin gurutzatuz gero, estaldura handiagoa lortuko da. Hau ez da
+oraindik erauzi — **batch 3+ atazatzat markatuta**, EBEren zalantza lana
+amaitu ondoren. Baliteke Berriaren formatua EBErena baino errazagoa izatea
+erauzteko (sinboloak argiagoak, kolorearen mendekoak ez).
+
+#### Gaikako hiztegiak (`/gaikako-hiztegiak`)
+
+Domeinuko hiztegi espezifikoak: gerra, unibertsitateak, gaitz infekziosoak,
+ingurumena, feminismoa, hauteskundeak, etab.
+
+**Txukun-erako mapaketa**: **Domeinu-hiztegia** (orain P1-eskopotik kanpo).
+Etorkizunean, erabiltzaileak domeinu bat aukeratzean (adib. "medikuntza"),
+hiztegi espezifikoa kargatuko litzateke berariazko terminoak ezagutzeko.
+Hau P3+ edo P4-ren ezaugarri potentziala da, ez oraingo priorititatea.
+
+#### Galdera-erantzunak eta Azken aldaketak
+
+FAQa eta aldaketa-loga. Ez dira zuzenki erabilgarriak txukun-en
+errepertoriorako, baina Azken aldaketak-ek erakusten du nola eguneratzen
+den hiztegia (zer sarrera gehitu diren azkenaldian) — hau baliagarria da
+zalantza-hiztegia mantentzeko eta fresko edukitzeko.
+
+### Sinteesia — Berria vs. EBE
+
+| Dimension | EBE | Berria |
+|---|---|---|
+| Autoritatea | Euskaltzaindia (akademikoa) | Kazetaritza-praktika (Berria) |
+| Estaldura | Arau orokorrak + zalantza-hiztegi zabala | Arau praktikoak + izen berezi zehatzak + estiloa |
+| Formatua | PDF (kolore-sinalearen mendeko §7.12) | HTML (mekanikoki irakurgarria, anotazio-sinboloekin) |
+| Zalantza-hitzak | 774 bikote erauzita (batch 1+2a) | Hiztegia — oraindik erauzi gabe (batch 3+) |
+| Izen bereziak | Maiuskulak sarrera (id=1023) | Ortotipografia + Onomastika + Mundua + Euskal Herria (askoz zabalagoa) |
+| Estiloa | ez estaltzen | Idazkuntza atal osoa (~16.000 hitz) |
+
+**Ondorioa**: Berria **ez da EBEren ordezkoa**, baizik eta **osagarria**.
+EBE autoritate primarioa izaten jarraitzen du erregela-geruzarentzat (jadanik
+774 zalantza-bikote erauzita eta 4 arau inplementatuta). Berriak gehitzen
+duena:
+
+1. **Izen berezien estaldura askoz zabalagoa** (F5 gazetteer-erako) —
+   Ortotipografia + Onomastika + Mundua + Euskal Herria atalek datu zuzena
+   ematen dute toponimo, pertsona-izen, erakunde, kirol-talde, etab.
+   idazteko. Hau da Berriaren ekarpenik baliotsuena oraingo roadmap-erako.
+2. **Zalantza-hiztegi mekanikoki irakurgarria** — Hiztegia atalak anotazio-
+   sinbolo estandarizatuak ditu; EBEren kolore-mendeko erauzketa baino
+   errazagoa izan daiteke. Baina oraindik erauzi gabe — batch 3+.
+3. **Estilo-arauak** — Idazkuntza atala etorkizuneko P4 "style suggestions"
+   geruzarentzat da, ez P1 ortografia-eskoporako.
+
+### Gomendio zuzenak roadmap-erako
+
+1. **F5 gazetteer** (P1 batch 3 / P2): Berriaren Ortotipografia + Onomastika
+   + Mundua + Euskal Herria atalak erauzi eta toponimo + izen berezi
+   zerrenda eraiki. EBEren §7.13-etik datozen 35 izen bereziekin batera.
+   Honek F5 akatsak konponduko lituzke (c091 erakundeen maiuskulak, c095
+   gorputz zerutiarrak, c096 modelaren gehiegizko maiuskulak).
+
+2. **Zalantza-osagarria** (P1 batch 3+): Berriaren Hiztegia atala erauzi,
+   EBEren 774 bikoteekin gurutzatu, berriak gehitu. Formatua mekanikoki
+   irakurgarria denez, erauzketa EBErena baino errazagoa izan daiteke.
+
+3. **Estilo-arauak** (P4+): Berriaren Idazkuntza atala ez da oraingo
+   prioritatea. "Style suggestions" geruza etorkizuneko lana da.
+
+4. **Domeinu-hiztegiak** (P3+): Gaikako hiztegiak atala ez da oraingo
+   prioritatea. Erabiltzailearen domeinuaren arabera hiztegi espezifikoa
+   kargatzea etorkizuneko ezaugarria da.
+
+### Egiaztapen-egoera
+
+| Baieztapena | Iturria | Egiaztatuta? |
+|---|---|---|
+| Berriaren Estilo Liburua linean publikoa da | berria.eus/estiloliburua (orri nagusia) | Bai |
+| Atalen URL-egitura bi motatakoa da (`/eliburua/` + erroa) | Orri nagusia + site map | Bai |
+| Ortotipografiak maiuskulen taxonomia osoa du | `/eliburua/ortotipografia` (6.529 hitz irakurrita) | Bai |
+| Ortotipografiak zenbaki-arauak ditu | atal bera | Bai |
+| Idazkuntzak estilo- eta paragrafo-arauak ditu | `/eliburua/idazkuntza` (16.099 hitz irakurrita) | Bai |
+| Hiztegiak anotazio-sinbolo estandarizatuak ditu | `/azken-aldaketak/hiztegia/{id}` sarrerak | Bai |
+| Onomastikak izen berezien arauak ditu | `/eliburua/onomastika` | Bai (izen laburra) |
+| Mundua/Euskal Herria toponimo-gazetteerrak dira | `/mundua`, `/euskal-herria` atalak | Bai (izen laburra) |
+| Gaikako hiztegiak domeinu-hiztegiak dira | `/gaikako-hiztegiak` | Bai (izen laburra) |
+
+**Muga**: Onomastika, Mundua, Euskal Herria, eta Gaikako hiztegiak atalen
+eduki osoa ez da hitzez hitz irakurrita — izenak eta deskribapen orokorrak
+baizik. F5 gazetteer-a erauzteko unean, atal hauen eduki osoa berreskuratu
+eta erauzketa-datua egiaztatu beharko da.
+
