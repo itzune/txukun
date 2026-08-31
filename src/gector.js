@@ -84,7 +84,9 @@ export async function initGector() {
       '[txukun GECToR v2] model loaded — labels:', vocab.num_labels,
       '| detect:', vocab.d_num_labels,
       '| types:', hasTypes ? vocab.t_num_labels : 'none',
+      '| session outputs:', session.outputNames?.map((n) => n) ?? 'unknown',
     );
+    console.log('[txukun] Debug mode: set window.__TXUKUN_DEBUG = true for inference logs');
     return session;
   })().catch((err) => {
     console.warn('[txukun GECToR v2] load failed, grammar correction disabled:', err);
@@ -546,6 +548,11 @@ function _processChunkLogits(
 
   const sentenceKeepAll = maxErrorProb < MIN_ERROR_PROB;
 
+  // DEBUG: log detection gate for batched chunks
+  if (typeof window !== 'undefined' && window.__TXUKUN_DEBUG) {
+    console.log(`[GECToR] batched chunk: maxErrorProb=${maxErrorProb.toFixed(4)} gate=${sentenceKeepAll ? 'KEEP-ALL' : 'OPEN'} detections=${wordDetections.length}`);
+  }
+
   // ── Edit labels: softmax + keep_confidence + detection gate ──
   const predLabelIds = new Int32Array(seqLen);
 
@@ -768,6 +775,11 @@ export async function correctGrammar(text) {
 
   if (states.length === 0) return { corrected: text, wordTypes: [] };
 
+  // DEBUG: log chunks for diagnosis
+  if (typeof window !== 'undefined' && window.__TXUKUN_DEBUG) {
+    console.log(`[GECToR] correctGrammar: ${states.length} chunks`, states.map((s) => s.chunkText.slice(0, 40)));
+  }
+
   // Iterative batched refinement
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
     const active = states.filter((s) => !s.done);
@@ -793,11 +805,18 @@ export async function correctGrammar(text) {
       if (!hasCorrections) {
         s.done = true;
         s.currentWords = s.words.slice(1); // strip $START
+        if (typeof window !== 'undefined' && window.__TXUKUN_DEBUG) {
+          console.log(`[GECToR] iter ${iter} chunk ${i}: no corrections (done)`);
+        }
         continue;
       }
 
       s.currentWords = applyEdits(s.words, wordLabels);
       s.everCorrected = true;
+
+      if (typeof window !== 'undefined' && window.__TXUKUN_DEBUG) {
+        console.log(`[GECToR] iter ${iter} chunk ${i}: corrected`, s.currentWords.slice(0, 5));
+      }
 
       // Re-tokenize for next iteration
       if (iter < MAX_ITERATIONS - 1) {
@@ -855,7 +874,16 @@ export async function correctGrammar(text) {
     correctedParts.push(text.slice(prevEnd));
   }
 
-  return { corrected: correctedParts.join(''), wordTypes: allWordTypes };
+  const finalCorrected = correctedParts.join('');
+
+  // DEBUG: log final result
+  if (typeof window !== 'undefined' && window.__TXUKUN_DEBUG) {
+    console.log(`[GECToR] final: changed=${finalCorrected !== text}`, { corrected: finalCorrected.slice(0, 80), original: text.slice(0, 80) });
+    const correctedChunks = states.filter((s) => s.everCorrected).length;
+    console.log(`[GECToR] ${correctedChunks}/${states.length} chunks had corrections`);
+  }
+
+  return { corrected: finalCorrected, wordTypes: allWordTypes };
 }
 
 /**

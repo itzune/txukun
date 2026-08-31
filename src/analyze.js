@@ -295,6 +295,14 @@ export async function analyzeText(mdText, onProgress, onBatch) {
     return [];
   }
 
+  // DEBUG: log what the model produced
+  if (typeof window !== 'undefined' && window.__TXUKUN_DEBUG) {
+    console.log('[analyze] corrected === plainText?', corrected === plainText);
+    console.log('[analyze] plainText:', plainText.slice(0, 80));
+    console.log('[analyze] corrected:', (corrected || '').slice(0, 80));
+    console.log('[analyze] wordTypes:', wordTypes?.length, 'items');
+  }
+
   if (!corrected || corrected === plainText) return [];
 
   // ── Diff original → corrected to extract per-span changes ──
