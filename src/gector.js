@@ -50,7 +50,11 @@ const MAX_ITERATIONS = 3;
 //   tokenizer files at root   (XLM-RoBERTa BPE)
 const HF_REPO = 'itzune/gector-eus-v2-onnx';
 const HF_BASE = `https://huggingface.co/${HF_REPO}/resolve/main`;
-const CACHE_KEY = 'gector-v2-mt';
+// Pin a specific revision (commit hash) to bust the browser cache after
+// the tokenizer was fixed to include the $START special token.
+// Update this when tokenizer/model files change on HuggingFace.
+const HF_REVISION = '9f1f13261727';
+const CACHE_KEY = 'gector-v2-mt-r1'; // bumped: tokenizer $START fix
 
 // ── Lazy loading ────────────────────────────────────
 
@@ -66,7 +70,7 @@ export async function initGector() {
 
   loadingPromise = (async () => {
     const [tok, voc, modelBuf] = await Promise.all([
-      AutoTokenizer.from_pretrained(HF_REPO),
+      AutoTokenizer.from_pretrained(HF_REPO, { revision: HF_REVISION }),
       cachedFetch(`${HF_BASE}/gector_vocab.json`, CACHE_KEY).then((r) => r.json()),
       cachedFetch(`${HF_BASE}/onnx/model_q4.onnx`, CACHE_KEY).then((r) => r.arrayBuffer()),
     ]);
