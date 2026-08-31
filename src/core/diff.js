@@ -30,6 +30,43 @@ export function tokenizeWithOffsets(text) {
   return tokens;
 }
 
+// Punctuation chars that the GECToR model tokenizer splits from words.
+// MUST match PUNCT_RE in gector.js so the diff tokenizes the same way.
+const PUNCT_RE = /([.,;:!?()«»"'\u2013\u2014])/g;
+
+/**
+ * Further split each non-whitespace token by punctuation, preserving
+ * char offsets. This mirrors the model's tokenizeWords() so that
+ * "«mugatua»" is split into [«, mugatua, »] in BOTH the original and
+ * corrected texts — preventing spurious diffs when detokenization
+ * introduces spacing differences around punctuation.
+ */
+function splitPunct(tokens) {
+  const out = [];
+  for (const tok of tokens) {
+    if (!/\S/.test(tok.text)) {
+      out.push(tok); // whitespace token — keep as-is
+      continue;
+    }
+    const chunk = tok.text;
+    const base = tok.from;
+    let last = 0;
+    let m;
+    PUNCT_RE.lastIndex = 0;
+    while ((m = PUNCT_RE.exec(chunk)) !== null) {
+      if (m.index > last) {
+        out.push({ text: chunk.slice(last, m.index), from: base + last, to: base + m.index });
+      }
+      out.push({ text: m[0], from: base + m.index, to: base + m.index + 1 });
+      last = m.index + 1;
+    }
+    if (last < chunk.length) {
+      out.push({ text: chunk.slice(last), from: base + last, to: base + chunk.length });
+    }
+  }
+  return out;
+}
+
 /**
  * Word-level LCS diff. Returns an edit script mapping original offsets to
  * corrected text spans.
@@ -38,8 +75,12 @@ export function tokenizeWithOffsets(text) {
  * @returns {Array<{type:string, fromText:string, toText:string, fromOffset:number, toOffset:number}>}
  */
 export function diffWords(originalText, correctedText) {
-  const a = tokenizeWithOffsets(originalText);
-  const b = tokenizeWithOffsets(correctedText);
+  // Split punctuation from words (matching the model's tokenization) so
+  // that «mugatua» becomes [«, mugatua, »] in both texts. Without this,
+  // detokenization spacing differences around punctuation cause spurious
+  // diffs (e.g. «mugatua vs « + mugatua).
+  const a = splitPunct(tokenizeWithOffsets(originalText));
+  const b = splitPunct(tokenizeWithOffsets(correctedText));
   // Only compare non-whitespace tokens for alignment, but we operate on
   // full token arrays so offsets stay valid.
   const aWords = a.map((t, i) => ({ t, i })).filter((x) => /\S/.test(x.t.text));
@@ -135,18 +176,4 @@ export function diffWords(originalText, correctedText) {
     i++;
   }
   return changes;
-}
-
-/**
- * True if `a` and `b` differ only in case and/or punctuation (same letters).
- * Used to gate cap-punct diffs: a change like "mikel" → "Mikel!" passes,
- * but a word substitution like "etorri" → "joan" is rejected (not cap-punct).
- * @param {string} a
- * @param {string} b
- * @returns {boolean}
- */
-export function isCasePunctOnly(a, b) {
-  if (a === b) return false;
-  const strip = (s) => s.replace(/[^\p{L}]/gu, '').toLowerCase();
-  return strip(a) === strip(b) && strip(a).length > 0;
 }

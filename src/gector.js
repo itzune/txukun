@@ -43,11 +43,6 @@ const KEEP_CONFIDENCE = 0.0;
 const MIN_ERROR_PROB = 0.5;   // detection gate: only correct if confident
 const MAX_ITERATIONS = 5;
 
-// Punctuation tokenization (must match training-data preprocessing).
-// Hyphens are intentionally NOT split — in Basque they join compounds
-// (hego-ekialdea, euskal-espainiar); splitting them destroys compounds.
-const PUNCT_RE = /([.,;:!?()«»"'\u2013\u2014])/g;
-
 // Model source: HuggingFace Hub.
 // itzune/gector-eus-v2-onnx contains:
 //   onnx/model_q4.onnx        (~87MB int4, 3 outputs incl. logits_t)
@@ -392,6 +387,9 @@ function applyEdits(words, labels) {
 // Splits punctuation from words exactly as the training data did, but
 // records each token's char span in the ORIGINAL text. This keeps type
 // offsets aligned to the source the editor/diff operate on.
+// Hyphens are intentionally NOT split — in Basque they join compounds
+// (hego-ekialdea, euskal-espainiar); splitting them destroys compounds.
+// MUST match PUNCT_RE in core/diff.js (splitPunct).
 
 function tokenizeWords(text) {
   const tokens = [];
@@ -418,7 +416,14 @@ function tokenizeWords(text) {
 }
 
 function detokenizePunctuation(text) {
-  return text.replace(/\s+([.,;:!?()«»"'\u2013\u2014])/g, '$1');
+  // Remove space BEFORE closing/mid punctuation: "word ," → "word,"
+  let result = text.replace(/\s+([.,;:!?»)"'])/g, '$1');
+  // Remove space AFTER opening punctuation: "« word" → "«word"
+  // («, (, –, — are opening — the old regex wrongly removed space
+  //  before them, turning «mugatua» into « mugatua» and causing
+  //  spurious diffs at every quote/paren/em-dash.)
+  result = result.replace(/([«(\u2013\u2014"'])\s+/g, '$1');
+  return result;
 }
 
 // ── Public API ──────────────────────────────────────
@@ -457,20 +462,22 @@ export async function correctGrammar(text) {
 
   // ── Iterative refinement of the corrected text ──
   const { wordLabels, hasCorrections } = alignToWords(predLabelIds, wordIds);
-  let currentWords;
   if (!hasCorrections) {
-    currentWords = wordTokens.map((w) => w.word);
-  } else {
-    currentWords = applyEdits(words, wordLabels);
-    for (let iter = 1; iter < MAX_ITERATIONS; iter++) {
-      const w = ['$START', ...currentWords];
-      const { inputIds: ii, wordIds: wi } = tokenizeWithWordIds(w, maxLen);
-      const mask = new Array(ii.length).fill(1);
-      const { predLabelIds: pl } = await predictAll(ii, mask, wi);
-      const { wordLabels: wl, hasCorrections: hc } = alignToWords(pl, wi);
-      if (!hc) break;
-      currentWords = applyEdits(w, wl);
-    }
+    // Model $KEEP'd every word — return the original text unchanged.
+    // Skipping detokenization avoids introducing spacing artifacts
+    // (e.g. «mugatua» → « mugatua») that would cause spurious diffs.
+    return { corrected: text, wordTypes };
+  }
+
+  let currentWords = applyEdits(words, wordLabels);
+  for (let iter = 1; iter < MAX_ITERATIONS; iter++) {
+    const w = ['$START', ...currentWords];
+    const { inputIds: ii, wordIds: wi } = tokenizeWithWordIds(w, maxLen);
+    const mask = new Array(ii.length).fill(1);
+    const { predLabelIds: pl } = await predictAll(ii, mask, wi);
+    const { wordLabels: wl, hasCorrections: hc } = alignToWords(pl, wi);
+    if (!hc) break;
+    currentWords = applyEdits(w, wl);
   }
 
   const corrected = detokenizePunctuation(currentWords.join(' '));
