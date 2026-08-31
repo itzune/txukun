@@ -428,22 +428,70 @@ function detokenizePunctuation(text) {
 
 // ── Public API ──────────────────────────────────────
 
+// Max words per chunk. The model's max_length is 128 subwords; Basque
+// words average ~1.5–2 BPE subwords, so 60 words ≈ 90–120 subwords —
+// safely under the limit. The model was trained/evaluated on individual
+// sentences (short records), so chunking also gives it focused context
+// matching the training distribution, instead of one long truncated block.
+const MAX_CHUNK_WORDS = 60;
+
 /**
- * Correct grammar and return per-word error info.
+ * Split text into sentence-level chunks for the model.
  *
- * @param {string} text — input text
- * @returns {Promise<{corrected: string, wordTypes: Array<{start, end, type, pIncorrect}>}>}
- *   `corrected` — fully corrected text (after up to MAX_ITERATIONS passes).
- *   `wordTypes` — per-original-word error type + detection, aligned to
- *     `text` char offsets. Types come from iteration 0 (original words).
- *   If model loading failed, returns { corrected: text, wordTypes: [] }.
+ * Breaks at newlines (paragraphs) and sentence-ending punctuation
+ * (. ! ? »), batching sentences up to MAX_CHUNK_WORDS words. Returns
+ * chunks with their [start, end) offsets in the original text so word
+ * types can be adjusted back to full-text coordinates.
+ *
+ * @param {string} text
+ * @returns {Array<{text: string, start: number, end: number}>}
  */
-export async function correctGrammar(text) {
-  if (!isGectorReady()) {
-    await initGector();
-    if (!isGectorReady()) return { corrected: text, wordTypes: [] };
+function chunkText(text) {
+  const wordTokens = tokenizeWords(text);
+  if (wordTokens.length === 0) return [];
+  if (wordTokens.length <= MAX_CHUNK_WORDS) {
+    return [{ text, start: 0, end: text.length }];
   }
 
+  const chunks = [];
+  let chunkStartIdx = 0; // index into wordTokens
+  let sentenceEndIdx = 0; // last sentence boundary (index into wordTokens)
+
+  for (let i = 0; i < wordTokens.length; i++) {
+    const word = wordTokens[i].word;
+
+    // Track sentence boundaries (for preferred break points)
+    if (/^[.!?»]+$/.test(word)) {
+      sentenceEndIdx = i + 1;
+    }
+
+    const wordsInChunk = i - chunkStartIdx + 1;
+    if (wordsInChunk >= MAX_CHUNK_WORDS) {
+      // Break at the last sentence boundary if we have one; otherwise
+      // break at the current word (hard break mid-sentence).
+      const breakIdx = sentenceEndIdx > chunkStartIdx ? sentenceEndIdx : i + 1;
+      const start = wordTokens[chunkStartIdx].start;
+      const end = wordTokens[breakIdx - 1].end;
+      chunks.push({ text: text.slice(start, end), start, end });
+      chunkStartIdx = breakIdx;
+      sentenceEndIdx = breakIdx;
+    }
+  }
+
+  // Last chunk
+  if (chunkStartIdx < wordTokens.length) {
+    const start = wordTokens[chunkStartIdx].start;
+    chunks.push({ text: text.slice(start), start, end: text.length });
+  }
+
+  return chunks;
+}
+
+/**
+ * Process a single chunk of text (up to ~60 words). Returns corrected
+ * text + per-word types with offsets relative to the chunk's own start.
+ */
+async function _correctChunk(text) {
   const maxLen = vocab.max_length || 128;
   const wordTokens = tokenizeWords(text);
   if (wordTokens.length === 0) return { corrected: text, wordTypes: [] };
@@ -457,15 +505,12 @@ export async function correctGrammar(text) {
     inputIds, attentionMask, wordIds,
   );
 
-  // Types + detection aligned to original-text offsets (captured once).
+  // Types + detection aligned to chunk offsets (captured once).
   const wordTypes = alignWordInfo(predTypeIds, wordDetections, wordIds, wordTokens);
 
   // ── Iterative refinement of the corrected text ──
   const { wordLabels, hasCorrections } = alignToWords(predLabelIds, wordIds);
   if (!hasCorrections) {
-    // Model $KEEP'd every word — return the original text unchanged.
-    // Skipping detokenization avoids introducing spacing artifacts
-    // (e.g. «mugatua» → « mugatua») that would cause spurious diffs.
     return { corrected: text, wordTypes };
   }
 
@@ -482,6 +527,71 @@ export async function correctGrammar(text) {
 
   const corrected = detokenizePunctuation(currentWords.join(' '));
   return { corrected, wordTypes };
+}
+
+/**
+ * Correct grammar and return per-word error info.
+ *
+ * Splits the input into sentence-level chunks (the model's max_length is
+ * 128 subwords and it was trained on individual sentences), processes
+ * each chunk independently, then merges the results. This ensures:
+ *   - All text is seen by the model (not just the first ~100 words)
+ *   - The detection gate is applied per-sentence, not per-document
+ *   - Context matches the training distribution (short sentences)
+ *
+ * @param {string} text — input text
+ * @returns {Promise<{corrected: string, wordTypes: Array<{start, end, type, pIncorrect}>}>}
+ *   `corrected` — fully corrected text (after up to MAX_ITERATIONS per chunk).
+ *   `wordTypes` — per-original-word error type + detection, aligned to
+ *     `text` char offsets. Types come from iteration 0 (original words).
+ *   If model loading failed, returns { corrected: text, wordTypes: [] }.
+ */
+export async function correctGrammar(text) {
+  if (!isGectorReady()) {
+    await initGector();
+    if (!isGectorReady()) return { corrected: text, wordTypes: [] };
+  }
+
+  const chunks = chunkText(text);
+  if (chunks.length === 0) return { corrected: text, wordTypes: [] };
+  if (chunks.length === 1) {
+    return _correctChunk(chunks[0].text);
+  }
+
+  // Multi-chunk: process each independently, preserve whitespace gaps,
+  // and adjust word-type offsets back to full-text coordinates.
+  const correctedParts = [];
+  const allWordTypes = [];
+  let prevEnd = 0;
+
+  for (const chunk of chunks) {
+    // Preserve whitespace between chunks (newlines, spaces)
+    if (chunk.start > prevEnd) {
+      correctedParts.push(text.slice(prevEnd, chunk.start));
+    }
+
+    const { corrected: chunkCorrected, wordTypes: chunkTypes } =
+      await _correctChunk(chunk.text);
+    correctedParts.push(chunkCorrected);
+
+    // Adjust offsets from chunk-local to full-text
+    for (const wt of chunkTypes) {
+      allWordTypes.push({
+        ...wt,
+        start: wt.start + chunk.start,
+        end: wt.end + chunk.start,
+      });
+    }
+
+    prevEnd = chunk.end;
+  }
+
+  // Preserve trailing whitespace
+  if (prevEnd < text.length) {
+    correctedParts.push(text.slice(prevEnd));
+  }
+
+  return { corrected: correctedParts.join(''), wordTypes: allWordTypes };
 }
 
 /**
