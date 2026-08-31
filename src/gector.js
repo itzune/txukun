@@ -45,7 +45,11 @@ const MAX_ITERATIONS = 3;
 
 // Model source: HuggingFace Hub.
 // itzune/gector-eus-v2-onnx contains:
-//   onnx/model_q4.onnx        (~87MB int4, 3 outputs incl. logits_t)
+//   onnx/model_quantized.onnx (~128MB int8, 3 outputs incl. logits_t)
+//   onnx/model_q4.onnx        (~87MB int4 — NOT used: int4 quantization
+//                              degrades the detection head, dropping
+//                              P(INCORRECT) below the 0.5 gate for some
+//                              words, e.g. sentence-initial "hau" → 0.43)
 //   gector_vocab.json         (label/detect/type vocabularies)
 //   tokenizer files at root   (XLM-RoBERTa BPE)
 const HF_REPO = 'itzune/gector-eus-v2-onnx';
@@ -54,7 +58,7 @@ const HF_BASE = `https://huggingface.co/${HF_REPO}/resolve/main`;
 // the tokenizer was fixed to include the $START special token.
 // Update this when tokenizer/model files change on HuggingFace.
 const HF_REVISION = '9f1f13261727';
-const CACHE_KEY = 'gector-v2-mt-r1'; // bumped: tokenizer $START fix
+const CACHE_KEY = 'gector-v2-mt-r2'; // bumped: switch int4 → int8 model
 
 // ── Lazy loading ────────────────────────────────────
 
@@ -72,7 +76,7 @@ export async function initGector() {
     const [tok, voc, modelBuf] = await Promise.all([
       AutoTokenizer.from_pretrained(HF_REPO, { revision: HF_REVISION }),
       cachedFetch(`${HF_BASE}/gector_vocab.json`, CACHE_KEY).then((r) => r.json()),
-      cachedFetch(`${HF_BASE}/onnx/model_q4.onnx`, CACHE_KEY).then((r) => r.arrayBuffer()),
+      cachedFetch(`${HF_BASE}/onnx/model_quantized.onnx`, CACHE_KEY).then((r) => r.arrayBuffer()),
     ]);
 
     tokenizer = tok;
