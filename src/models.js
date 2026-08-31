@@ -1,30 +1,19 @@
 /**
- * Txukun — Shared model management
+ * Txukun — Shared model management (single-model architecture)
  *
- * Owns the MarianMT (cap-punct) pipeline and exposes a clean API for
- * both the UI layer (main.js) and the analysis bridge (analyze.js).
+ * Loads the GECToR v2-mt model (grammar + spelling + cap-punct + types,
+ * all in one). This replaces the old 3-model pipeline (MarianMT cap-punct
+ * + Hunspell/BERTeus spelling + GECToR grammar) with a single ONNX model.
  *
- * Models:
- *   - MarianMT cap-punct  (itzune/txukun-cap-punct-eu)   — this module
- *   - Hunspell + BERTeus  (spell.js)                      — delegated
- *   - GECToR grammar      (gector.js)                     — delegated
+ * The actual model logic lives in gector.js; this module is a thin status
+ * wrapper so the UI (main.js) can show load progress and readiness.
  */
 
-import { pipeline } from '@huggingface/transformers';
-import { loadSpellChecker } from './spell.js';
 import { initGector, isGectorReady, isGectorFailed } from './gector.js';
-import { cleanModelOutput } from './core/clean-output.js';
-import { runRules } from './core/engine.js';
-import { allRules } from './core/rules/index.js';
 
 // ── State ───────────────────────────────────────────
 
-let correctorPipeline = null;
-let modelLoading = false;
-let modelLoaded = false;
-let spellReady = false;
-let grammarReady = false;
-
+let loading = false;
 let statusCb = () => {};
 
 /** @param {(status: string) => void} cb */
@@ -36,314 +25,41 @@ function setStatus(s) {
   statusCb(s);
 }
 
-export function isModelReady() { return modelLoaded; }
-export function isSpellReady() { return spellReady; }
-export function isGrammarReady() { return grammarReady; }
-export function isGrammarFailed() { return isGectorFailed(); }
-export function isLoading() { return modelLoading; }
+// ── Readiness ───────────────────────────────────────
 
-// ── Model loading ───────────────────────────────────
+export function isModelReady() {
+  return isGectorReady();
+}
+export function isGrammarReady() {
+  return isGectorReady();
+}
+export function isGrammarFailed() {
+  return isGectorFailed();
+}
+export function isLoading() {
+  return loading;
+}
 
+// ── Loading ─────────────────────────────────────────
+
+/**
+ * Pre-load the GECToR v2-mt model in the background after startup.
+ * The model (~87MB int4 ONNX + tokenizer) takes 5–120s to download and
+ * initialize depending on cache and device. analyzeText() also lazy-loads
+ * on first call, so this is purely for warming the cache before the user
+ * clicks "Aztertu".
+ */
 export async function loadModels() {
-  if (modelLoading || modelLoaded) return;
-  modelLoading = true;
+  if (loading || isGectorReady()) return;
+  loading = true;
   setStatus('loading');
-
   try {
-    correctorPipeline = await pipeline('translation', 'itzune/txukun-cap-punct-eu', {
-      device: 'wasm',
-      dtype: 'q8',
-      subfolder: '',
-      progress_callback: (info) => {
-        if (info.status === 'progress' && info.file &&
-            (info.file.endsWith('.onnx') || info.file.endsWith('tokenizer.json'))) {
-          setStatus('loading:' + Math.round(10 + (info.progress / 100) * 80) + '%');
-        }
-      },
-    });
-
-    modelLoaded = true;
-    setStatus('loading-spell');
-
-    // Hunspell (spell check)
-    try {
-      await loadSpellChecker();
-      spellReady = true;
-    } catch (err) {
-      console.warn('[txukun] Hunspell failed:', err);
-      spellReady = false;
-    }
-
-    // GECToR (grammar) — pre-load in background
-    initGector().then(() => {
-      grammarReady = isGectorReady();
-      if (grammarReady) setStatus('ready');
-    });
-
-    setStatus(spellReady ? 'ready' : 'ready-nospell');
+    await initGector();
+    setStatus(isGectorReady() ? 'ready' : 'error');
   } catch (err) {
     console.error('[txukun] model load failed:', err);
     setStatus('error');
   } finally {
-    modelLoading = false;
+    loading = false;
   }
-}
-
-// ── Cap-punct correction (MarianMT) ─────────────────
-
-/**
- * Constrain MarianMT output to ONLY capitalization + punctuation changes.
- * Rejects word substitutions (hallucinations) by aligning input and
- * output tokens via LCS on lowercased alphanumeric content.
- *
- * Unlike the previous positional approach (which bailed out entirely
- * when token counts differed — losing ALL valid corrections), this
- * alignment-based version accepts valid cap/punct changes on matched
- * tokens and keeps original text for unmatched (hallucinated) ones.
- */
-function constrainCapPunct(inputLine, outputLine) {
-  const inputTokens = inputLine.match(/\S+/g) || [];
-  const outputTokens = outputLine.match(/\S+/g) || [];
-
-  // Lowercased alphanumeric content for alignment
-  const norm = (t) => t.toLowerCase().replace(/[^a-zà-ÿñü]/g, '');
-  const aNorm = inputTokens.map(norm);
-  const bNorm = outputTokens.map(norm);
-  const n = aNorm.length;
-  const m = bNorm.length;
-
-  if (n === 0) return { text: inputLine, matchRate: 1.0 };
-
-  // LCS DP table
-  const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) {
-      dp[i][j] =
-        aNorm[i] === bNorm[j]
-          ? dp[i + 1][j + 1] + 1
-          : Math.max(dp[i + 1][j], dp[i][j + 1]);
-    }
-  }
-
-  // Walk alignment: use output token where matched (accepts cap/punct
-  // changes), keep input token where unmatched (rejects substitution),
-  // skip hallucinated output tokens.
-  //
-  // All-caps changes are tentatively rejected (could be hallucination
-  // like 'esker'→'ESKER') but remembered. After computing match rate,
-  // if it's high (model working well), they're restored as legit
-  // acronym corrections (e.g. 'eebb'→'EEBB', 'nato'→'NATO').
-  const result = [];
-  let matched = 0;
-  const pendingCaps = []; // {idx, outTok}
-  let i = 0;
-  let j = 0;
-  while (i < n && j < m) {
-    if (aNorm[i] === bNorm[j]) {
-      let outTok = outputTokens[j];
-      if (outTok.length > 1 && outTok === outTok.toUpperCase() && inputTokens[i] !== inputTokens[i].toUpperCase()) {
-        pendingCaps.push({ idx: result.length, outTok });
-        outTok = inputTokens[i];
-      }
-      // Reject hallucinated repeated punctuation: if the output token is
-      // significantly longer than the input, it's hallucination (e.g.
-      // 'nahi?' → 'nahi???...???'). Cap-punct only adds 1-2 chars max.
-      if (outTok.length > inputTokens[i].length + 3) {
-        outTok = inputTokens[i];
-      }
-      result.push(outTok);
-      matched++;
-      i++;
-      j++;
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      result.push(inputTokens[i]);
-      i++;
-    } else {
-      j++; // skip hallucinated token
-    }
-  }
-  while (i < n) {
-    result.push(inputTokens[i]);
-    i++;
-  }
-  const matchRate = n > 0 ? matched / n : 1.0;
-  // If match rate is high, model is working well — restore legit
-  // acronym capitalizations (e.g. 'eebb' → 'EEBB').
-  if (matchRate >= 0.7) {
-    for (const { idx, outTok } of pendingCaps) {
-      result[idx] = outTok;
-    }
-  }
-  return { text: result.join(' '), matchRate };
-}
-
-/**
- * Split text into sentence-length segments for the cap-punct model.
- *
- * The MarianMT model was trained on individual sentences (9.7M sentences).
- * Passing a multi-sentence paragraph causes it to treat the whole thing
- * as one sentence — only one period at the end, no mid-paragraph caps.
- *
- * Strategy:
- *  1. Split on newlines (hard breaks).
- *  2. Within each line, split on existing sentence-ending punctuation
- *     (`.`, `?`, `!`) followed by whitespace — but NOT on periods that
- *     follow digits (ordinal markers like "1993." or thousands separators
- *     like "2.018" — EBE Puntuazioa §1.2.2 "Zenbakietakoa"). Splitting
- *     on ordinal periods creates lowercase fragments that bypass the
- *     ASR gate and trigger model hallucinations.
- *  3. For long unpunctuated segments (>25 words), split by word count
- *     as a fallback so the model doesn't receive an over-long input.
- *
- * Returns an array of { text, sep } where `sep` is the separator to
- * rejoin with (' ' between sentences in a line, '\n' at line ends).
- */
-function splitIntoSegments(text) {
-  const segments = [];
-  const lines = text.split(/\n/);
-  for (let li = 0; li < lines.length; li++) {
-    const line = lines[li];
-    if (!line.trim()) {
-      segments.push({ text: '', sep: '\n' });
-      continue;
-    }
-    // Split on sentence-ending punctuation followed by whitespace.
-    // Don't split on periods that follow digits (ordinal/thousands):
-    // (?<=[?!]|[^0-9]\.)\s+  matches whitespace after ? or !, or after
-    // a period that is preceded by a non-digit character.
-    const sentenceEnds = line.split(/(?<=[?!]|[^0-9]\.)\s+/);
-    const lineSep = li < lines.length - 1 ? '\n' : '';
-    for (let si = 0; si < sentenceEnds.length; si++) {
-      const trimmed = sentenceEnds[si].trim();
-      if (!trimmed) continue;
-      // Sentences within a line are rejoined with ' '; only the last
-      // sentence in a line gets the line separator (\n or '').
-      const sep = si < sentenceEnds.length - 1 ? ' ' : lineSep;
-      const wordCount = trimmed.split(/\s+/).length;
-      if (wordCount > 25) {
-        // Long unpunctuated segment — split by word count
-        const words = trimmed.split(/\s+/);
-        for (let i = 0; i < words.length; i += 20) {
-          const chunk = words.slice(i, i + 20).join(' ');
-          const isLastChunk = i + 20 >= words.length;
-          segments.push({
-            text: chunk,
-            sep: isLastChunk ? sep : ' ',
-          });
-        }
-      } else {
-        segments.push({ text: trimmed, sep });
-      }
-    }
-  }
-  return segments;
-}
-
-/**
- * Detect whether a segment is ASR-style output: all-lowercase with NO
- * punctuation at all. The cap-punct model was trained on this style and
- * should ONLY run on it.
- *
- * When fed already-correct text the model hallucinates degradations —
- * capitalizing mid-sentence words, replacing colons with commas/periods,
- * inserting spurious commas. On a 1483-word Berria article this produced
- * 19 false positives (100% FP rate, 0 true positives).
- *
- * Gate: the model runs ONLY if the segment is ASR-style (no uppercase
- * letters AND no punctuation marks of any kind). If the text has ANY
- * capitalization or ANY punctuation (comma, colon, period, em-dash…),
- * it was written by a human and the model is skipped — the deterministic
- * rule layer (sentence-initial-cap, terminal-punct, etc.) handles it.
- *
- * Why "any punctuation" not just "terminal punct": a sentence like
- * "1993. urtean sortu zen, ildo antikapitalista, antidesarrollista eta
- * asanblearioa ardatz hartuta." is correctly lowercase ("urtean" follows
- * the ordinal "1993.") but has commas → human-written → skip the model.
- *
- * Verified safe on the 33-case golden suite: all 33 are pure ASR-style
- * (lowercase, zero punctuation) → none are skipped by this gate.
- */
-export function isASRStyleSegment(text) {
-  if (!text || !text.trim()) return false;
-  const hasUpper = /[A-ZÀ-ÝÑÜÇ]/.test(text);
-  const hasPunct = /[.,;:!?«»"'()\[\]–—]/.test(text);
-  return !hasUpper && !hasPunct;
-}
-
-/**
- * @deprecated Use isASRStyleSegment (inverted logic). Kept for tests.
- */
-export function isWellFormedSegment(text) {
-  return !isASRStyleSegment(text);
-}
-
-/**
- * Run MarianMT cap-punct correction on the full text, then apply the P1
- * deterministic rule layer (sentence-initial cap, terminal punct, vocative
- * comma) to fix remaining gaps. Splits into sentence-length segments first
- * (the model was trained on individual sentences, not paragraphs).
- *
- * ASR gate: segments that are already well-formed (uppercase + terminal
- * punctuation) skip the model entirely — it only degrades them. The rule
- * layer still runs on all text.
- *
- * If the model is not yet loaded, still applies the rule layer ("Txukun Lite"
- * mode — basic cap+punct without the neural model).
- *
- * Returns the corrected text with only case/punctuation changes applied,
- * plus per-segment match rates so callers can assign per-correction
- * confidence instead of a single global average.
- *
- * @param {string} text
- * @returns {Promise<{corrected: string, matchRate: number, segmentRates: Array<{start: number, end: number, rate: number}>}>}
- */
-export async function correctCapPunct(text) {
-  if (!modelLoaded || !correctorPipeline) {
-    // Model not loaded — still apply deterministic rules (Txukun Lite mode)
-    const { corrected } = runRules(text, allRules);
-    return { corrected, matchRate: 1.0, segmentRates: [] };
-  }
-
-  const segments = splitIntoSegments(text);
-  const results = [];
-  const matchRates = [];
-  const segmentRates = [];
-  let offset = 0;
-  for (const seg of segments) {
-    if (!seg.text) {
-      results.push({ text: '', sep: seg.sep });
-      offset += seg.sep.length;
-      continue;
-    }
-    const segStart = offset;
-    // ASR gate: only run the model on ASR-style segments (all-lowercase,
-    // zero punctuation). Human-written text (has caps or any punctuation)
-    // is skipped — the model hallucinates degradations on well-formed text.
-    // The rule layer (run below on the concatenated output) handles
-    // sentence-initial caps and terminal punctuation deterministically.
-    let constrained = seg.text;
-    let matchRate = 1.0;
-    if (isASRStyleSegment(seg.text)) {
-      const out = await correctorPipeline(seg.text);
-      const corrected = cleanModelOutput(out[0]?.translation_text || seg.text);
-      const r = constrainCapPunct(seg.text, corrected);
-      constrained = r.text || seg.text;
-      matchRate = r.matchRate;
-    }
-    results.push({ text: constrained, sep: seg.sep });
-    matchRates.push(matchRate);
-    segmentRates.push({ start: segStart, end: segStart + seg.text.length, rate: matchRate });
-    offset += seg.text.length + seg.sep.length;
-    // Yield to the browser between segments so the UI can paint
-    // (progress text, cursor blink, etc.) instead of freezing for
-    // the entire multi-segment inference.
-    await new Promise((r) => setTimeout(r, 0));
-  }
-  const modelOutput = results.map((r) => r.text + r.sep).join('').trimEnd();
-  // Apply deterministic rule layer on top of model output (P1)
-  const { corrected: ruled } = runRules(modelOutput, allRules);
-  const avgMatchRate = matchRates.length > 0
-    ? matchRates.reduce((a, b) => a + b, 0) / matchRates.length
-    : 1.0;
-  return { corrected: ruled, matchRate: avgMatchRate, segmentRates };
 }

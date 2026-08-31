@@ -5,8 +5,8 @@
  * prevents the browser HTTP cache from storing them. Transformers.js
  * works around this by writing to the Cache API programmatically
  * (caches.open('transformers-cache')), but our raw fetch() calls for
- * GECToR's ONNX model (85MB) and BERTeus's embedding matrix (74MB)
- * bypass that layer — causing 159MB to re-download on every session.
+ * GECToR's ONNX model (~87MB) and gector_vocab.json bypass that layer
+ * — causing the model to re-download on every session.
  *
  * cachedFetch() wraps fetch() with a Cache API backing:
  *   1. Checks the cache first (instant for returning users)

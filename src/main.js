@@ -1,9 +1,9 @@
 /**
- * Txukun — Main entry point (Grammarly-style redesign)
+ * Txukun — Main entry point (single-model architecture)
  *
  * 3-pane layout: documents (left) · Idaztian editor (center) ·
- * suggestions (right). On-demand analysis ("Aztertu") runs the three
- * detection models and produces suggestion cards the user accepts or
+ * suggestions (right). On-demand analysis ("Aztertu") runs the GECToR
+ * v2-mt model and produces typed suggestion cards the user accepts or
  * dismisses individually — no auto-apply.
  */
 
@@ -49,7 +49,6 @@ async function init() {
   });
   initSuggestions({
     panelRoot: document.getElementById('rightPanel'),
-    onCountChange: () => {},
   });
 
   // 4. Wire up all UI events
@@ -141,15 +140,14 @@ async function onAnalyze() {
   btn.disabled = true;
   label.textContent = 'Aztertzen…';
   updateStatus('processing');
-  const skipped = new Set();
 
   try {
     // Clear previous errors
     clearErrors();
     clearCards();
 
-    // Incremental streaming: errors appear as each detector finishes,
-    // not all at once at the end. The rule engine (<10ms) shows first.
+    // Stream cards as soon as the model finishes (single batch, but the
+    // callback keeps the pattern for future incremental stages).
     const streamed = [];
     const onBatch = (batch) => {
       streamed.push(...batch);
@@ -158,34 +156,23 @@ async function onAnalyze() {
     };
 
     const errors = await analyzeText(text, (p) => {
-      if (p.skipped) { skipped.add(p.stage); return; }
-      label.textContent = ({
-        grammar: 'Gramatika aztertzen…',
-        spelling: 'Ortografia aztertzen…',
-        cappunct: 'Maiuskulak aztertzen…',
-      })[p.stage] || 'Aztertzen…';
+      label.textContent = p.stage === 'loading'
+        ? 'Eredua kargatzen…'
+        : 'Aztertzen…';
     }, onBatch);
 
-    // Final authoritative render (merged + de-duplicated + confidence-filtered)
+    // Final authoritative render (merged + de-duplicated)
     setErrors(errors);
     renderCards(errors);
 
-    const grammarSkipped = skipped.has('grammar');
     if (errors.length === 0) {
-      toast(
-        grammarSkipped
-          ? 'Ez da akatsik aurkitu (gramatika ez dago erabilgarri oraindik).'
-          : 'Ez da akatsik aurkitu. 👍',
-        grammarSkipped ? 'warning' : 'success',
-      );
+      toast('Ez da akatsik aurkitu. 👍', 'success');
     } else {
-      const msg = `${errors.length} iradokizun aurkitu dira.` +
-        (grammarSkipped ? ' Gramatika ez dago erabilgarri oraindik (eredua kargatzen).' : '');
-      toast(msg, grammarSkipped ? 'warning' : 'info');
+      toast(`${errors.length} iradokizun aurkitu dira.`, 'info');
     }
   } catch (err) {
     console.error('[txukun] analyze failed:', err);
-    toast('Akatsa analesian: ' + (err.message || err), 'error');
+    toast('Akatsa analisian: ' + (err.message || err), 'error');
   } finally {
     analyzing = false;
     btn.disabled = false;
@@ -217,9 +204,7 @@ function onDocSwitch(doc) {
 const STATUS_TEXT = {
   idle: 'Eredua kargatu gabe',
   loading: 'Eredua kargatzen…',
-  'loading-spell': 'Zuzentzailea kargatzen…',
   'ready': ' prest',
-  'ready-nospell': ' prest (ortografia gabe)',
   processing: 'Aztertzen…',
   error: 'Errorea eredua kargatzean',
 };
@@ -239,9 +224,9 @@ function updateStatus(status) {
   }
 
   dot.className = 'status-dot';
-  if (status === 'loading' || status === 'loading-spell') {
+  if (status === 'loading') {
     dot.classList.add('status-dot--loading');
-  } else if (status === 'ready' || status === 'ready-nospell') {
+  } else if (status === 'ready') {
     dot.classList.add('status-dot--ready');
   } else if (status === 'processing') {
     dot.classList.add('status-dot--processing');
@@ -251,7 +236,7 @@ function updateStatus(status) {
 
   // Enable analyze button once ready (and not currently analyzing)
   if (!analyzing) {
-    btn.disabled = !(status === 'ready' || status === 'ready-nospell');
+    btn.disabled = status !== 'ready';
   }
 }
 
@@ -356,13 +341,11 @@ function wireEvents() {
 function populateAbout() {
   const body = document.getElementById('aboutBody');
   body.innerHTML = `
-    <p><strong>Txukun</strong> euskarazko testu-zuzentzailea da. Maiuskulak, puntuazioa, ortografia eta gramatika zuzentzen ditu — dena nabigatzailean, pribatutasuna errespetatuz. Ez da testua zerbitzarira bidaltzen.</p>
-    <p><strong>Hiru eredu neuronaletan</strong> oinarrituta:</p>
-    <p>• <strong>Maiuskulak eta puntuazioa</strong> — MarianMT eredua (77 MB). Testuari maiuskulak eta puntuazioa berrezartzen dizkio.<br/>
-    • <strong>Ortografia</strong> — Hunspell hiztegia + BERTeus eredua (85 MB). Akats ortografikoak detektatu eta iradokizun hobeak eskaintzen ditu.<br/>
-    • <strong>Gramatika</strong> — GECToR-eus eredua (85 MB, Itzune-k trebatua). Adospena, kasua, denbora eta atzizkiak zuzentzen ditu.</p>
-    <p>Analisia eskatu («Aztertu» botoia) eta zuzenketa bakoitza banan-bana onartu edo baztertu dezakezu, Grammarly bezala.</p>
-    <p><strong>Lizentzia:</strong> Software librea. Ereduak: <code>itzune/berteus-onnx</code>, <code>itzune/gector-eus-onnx</code>, <code>itzune/txukun-cap-punct-eu</code> (HuggingFace).<br/>
+    <p><strong>Txukun</strong> euskarazko testu-zuzentzailea da. Ortografia, puntuazioa, maiuskulak, gramatika, kalkoak eta zalantzak zuzentzen ditu — dena nabigatzailean, pribatutasuna errespetatuz. Ez da testua zerbitzarira bidaltzen.</p>
+    <p><strong>Eredu neuronal bakarrean</strong> oinarrituta:</p>
+    <p>• <strong>GECToR v2-mt</strong> — RoBERTa-eus oinarritutako eredu multimisioa (87 MB, int4 ONNX). Akatsak detektatu, zuzendu eta <em>mota</em> sailkatzen ditu (ortografia, puntuazioa, maiuskulak, gramatika, lexikoa, zalantzak, izen bereziak, kalkoak) hiru irteera-buru dituen eredu bakunarekin. <code>horkonpon-corpus</code>eko 199.000 bikoteetan trebatua (Itzune).</p>
+    <p>Analisia eskatu («Aztertu» botoia) eta zuzenketa bakoitza banan-bana onartu edo baztertu dezakezu, bere mota eta azalpenarekin batera.</p>
+    <p><strong>Lizentzia:</strong> Software librea (CC-BY-SA 4.0). Eredua: <code>itzune/gector-eus-v2-onnx</code> (HuggingFace).<br/>
     Iturria: <a href="https://github.com/itzune/txukun" target="_blank">github.com/itzune/txukun</a></p>
   `;
 }

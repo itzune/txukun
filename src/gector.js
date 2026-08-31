@@ -1,28 +1,30 @@
 /**
- * Txukun — GECToR grammar correction (Tier 3)
+ * Txukun — GECToR v2-mt grammar correction (single-model architecture)
  *
- * Uses GECToR (edit-based grammatical error correction) fine-tuned on
- * RoBERTa-eus-base, trained on 1M Elhuyar GEC pairs.
+ * Uses the multi-task GECToR v2 model (itzune/gector-eus-v2-onnx), trained
+ * on the horkonpon-corpus (199K pairs). Three heads, one encoder:
  *
- * Architecture:
- *   - Encoder: RoBERTa-eus-base (110M, 12L/768H)
- *   - Two heads: label classifier ($KEEP/$DELETE/$REPLACE_x/$APPEND_x)
- *                 + error detector ($CORRECT/$INCORRECT)
- *   - Inference: iterative (up to 5 passes), non-autoregressive
+ *   - Edit labels   ($KEEP / $DELETE / $REPLACE_x / $APPEND_x / $TRANSFORM_*)
+ *   - Detection     ($CORRECT / $INCORRECT)  → per-word P(error)
+ *   - Error type    (none / spelling / punctuation / capitalization /
+ *                    word_level / zalantza / morphology / proper_noun / calque)
  *
- * Model: int4 ONNX (~85MB), runs on WASM via onnxruntime-web.
- * Tokenizer: XLM-RoBERTa BPE, loaded via Transformers.js.
+ * The type head is the key addition over v1: every corrected word is
+ * tagged with its error category, so the suggestions panel can group and
+ * label fixes correctly instead of lumping everything into "grammar".
  *
- * The model corrects real-word grammar errors (verb agreement, case,
- * tense, suffix) that spell check cannot detect (every form is a valid
- * dictionary word, just wrong in context).
+ * Types are captured on iteration 0 (the first forward pass on the
+ * ORIGINAL source words) — they describe the original word's error
+ * category, not a post-correction artifact. This matches the Python
+ * reference (gector/predict.py: first_iter_types).
  *
- * Lazy-loaded: model is only fetched when correctGrammar() is first called.
- * If loading fails, returns the original text unchanged (graceful degradation).
+ * Model: int4 ONNX (~87MB), runs on WASM via onnxruntime-web.
+ * Tokenizer: XLM-RoBERTa BPE (RoBERTa-eus-base), via Transformers.js.
+ * Lazy-loaded on first correctGrammar()/detectGrammar() call.
  */
 
 import { InferenceSession, Tensor } from 'onnxruntime-web';
-import { AutoTokenizer, env } from '@huggingface/transformers';
+import { AutoTokenizer } from '@huggingface/transformers';
 import { cachedFetch } from './cache.js';
 
 // ── State ───────────────────────────────────────────
@@ -35,41 +37,32 @@ let loadFailed = false;
 
 // ── Constants ───────────────────────────────────────
 
-const EMB_DIM = 768;
-
-// Inference parameters (tuned for precision over recall — keyboard
-// autocorrect context where false positives are costly).
+// Inference parameters (precision-oriented — false positives are costly
+// in an editor/autocorrect context). Mirrors the Python eval defaults.
 const KEEP_CONFIDENCE = 0.0;
-const MIN_ERROR_PROB = 0.5;   // detection threshold: only correct if confident
+const MIN_ERROR_PROB = 0.5;   // detection gate: only correct if confident
 const MAX_ITERATIONS = 5;
 
-// Punctuation tokenization (must match training data preprocessing).
-// The model was trained on data where punctuation is space-separated
-// from words (e.g., "kaixo," → "kaixo ,").
-//
-// NOTE: Hyphens (-) are intentionally NOT split. In Basque, hyphens join
-// compound words (hego-ekialdea, Madril-Sevilla, euskal-espainiar) — they
-// are morphological, not sentence punctuation. Splitting them caused GECToR
-// to destroy compounds ("hego-ekialdetik" → ["hego","-","ekialdetik"] →
-// "hego-"). The BPE tokenizer handles hyphenated words as-is.
+// Punctuation tokenization (must match training-data preprocessing).
+// Hyphens are intentionally NOT split — in Basque they join compounds
+// (hego-ekialdea, euskal-espainiar); splitting them destroys compounds.
 const PUNCT_RE = /([.,;:!?()«»"'\u2013\u2014])/g;
 
-// Model source: HuggingFace Hub (models are too large for git/GitHub Pages).
-// The repo itzune/gector-eus-onnx contains: onnx/model_q4.onnx (85MB int4),
-// gector_vocab.json, tokenizer.json, sentencepiece.bpe.model, etc.
-const HF_REPO = 'itzune/gector-eus-onnx';
+// Model source: HuggingFace Hub.
+// itzune/gector-eus-v2-onnx contains:
+//   onnx/model_q4.onnx        (~87MB int4, 3 outputs incl. logits_t)
+//   gector_vocab.json         (label/detect/type vocabularies)
+//   tokenizer files at root   (XLM-RoBERTa BPE)
+const HF_REPO = 'itzune/gector-eus-v2-onnx';
 const HF_BASE = `https://huggingface.co/${HF_REPO}/resolve/main`;
-
-// Local fallback paths (used only for local testing)
-const BASE = import.meta.env?.BASE_URL || '/';
-const MODEL_DIR = `${BASE}models/gector`;
+const CACHE_KEY = 'gector-v2-mt';
 
 // ── Lazy loading ────────────────────────────────────
 
 /**
- * Lazy-load the GECToR ONNX model + tokenizer + vocab.
- * Called on first use; subsequent calls return the cached promise.
- * Returns null if loading failed (graceful degradation).
+ * Lazy-load the GECToR v2 ONNX model + tokenizer + vocab.
+ * Subsequent calls return the cached promise. Returns null on failure
+ * (graceful degradation — callers fall back to original text).
  */
 export async function initGector() {
   if (session) return session;
@@ -77,16 +70,10 @@ export async function initGector() {
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
-    // Load tokenizer, vocab, and ONNX model from HuggingFace Hub.
-    // No env.allowLocalModels needed — Transformers.js defaults to
-    // allowRemoteModels=true in browser, same as MarianMT (cap-punct).
-    // GECToR ONNX model (85MB) and vocab are fetched via cachedFetch
-    // because HuggingFace serves with cache-control: no-store. Without
-    // this, the model re-downloads on every session.
     const [tok, voc, modelBuf] = await Promise.all([
       AutoTokenizer.from_pretrained(HF_REPO),
-      cachedFetch(`${HF_BASE}/gector_vocab.json`, 'gector-unified-v3').then(r => r.json()),
-      cachedFetch(`${HF_BASE}/onnx/model_q4.onnx`, 'gector-unified-v3').then(r => r.arrayBuffer()),
+      cachedFetch(`${HF_BASE}/gector_vocab.json`, CACHE_KEY).then((r) => r.json()),
+      cachedFetch(`${HF_BASE}/onnx/model_q4.onnx`, CACHE_KEY).then((r) => r.arrayBuffer()),
     ]);
 
     tokenizer = tok;
@@ -97,10 +84,15 @@ export async function initGector() {
       graphOptimizationLevel: 'all',
     });
 
-    console.log('[txukun GECToR] model loaded, labels:', vocab.num_labels);
+    const hasTypes = vocab.t_num_labels !== undefined;
+    console.log(
+      '[txukun GECToR v2] model loaded — labels:', vocab.num_labels,
+      '| detect:', vocab.d_num_labels,
+      '| types:', hasTypes ? vocab.t_num_labels : 'none',
+    );
     return session;
   })().catch((err) => {
-    console.warn('[txukun GECToR] load failed, grammar correction disabled:', err);
+    console.warn('[txukun GECToR v2] load failed, grammar correction disabled:', err);
     loadFailed = true;
     return null;
   });
@@ -108,24 +100,19 @@ export async function initGector() {
   return loadingPromise;
 }
 
-/**
- * Check if GECToR is loaded and ready.
- */
 export function isGectorReady() {
   return session !== null && tokenizer !== null && vocab !== null;
 }
 
-/**
- * Was GECToR loading attempted and failed?
- */
 export function isGectorFailed() {
   return loadFailed;
 }
 
-// ── Tokenization with word_ids ──────────────────────
-// Replicates HuggingFace's is_split_into_words=True + word_ids()
-// by tokenizing each word individually with a space prefix.
-// Verified: identical token IDs and word_ids to is_split_into_words=True.
+// ── Subword tokenization with word_ids ──────────────
+//
+// Replicates HuggingFace's is_split_into_words=True + word_ids() by
+// tokenizing each word individually with a space prefix. Verified to
+// produce identical token IDs and word_ids to the Python path.
 
 function tokenizeWithWordIds(words, maxLen) {
   const bosId = tokenizer.bos_token_id ?? 0;
@@ -152,6 +139,7 @@ function tokenizeWithWordIds(words, maxLen) {
   return { inputIds, wordIds };
 }
 
+/** First-subword mask: 1 at the first subword of each word, else 0. */
 function buildWordMasks(wordIds) {
   const masks = [];
   let prevWordId = null;
@@ -185,20 +173,23 @@ function softmax(logits, start, len) {
   return { exps, sumExp };
 }
 
-// ── Core prediction ─────────────────────────────────
+// ── Core 3-head prediction ──────────────────────────
+//
+// Single forward pass returning edit-label IDs, type IDs, and per-word
+// detection probabilities. All three heads are read from one session.run.
 
-async function predictTokenLabels(inputIds, attentionMask, wordIds) {
+async function predictAll(inputIds, attentionMask, wordIds) {
   const seqLen = inputIds.length;
 
   const inputIdsTensor = new Tensor(
     'int64',
     BigInt64Array.from(inputIds.map(BigInt)),
-    [1, seqLen]
+    [1, seqLen],
   );
   const attentionMaskTensor = new Tensor(
     'int64',
     BigInt64Array.from(attentionMask.map(BigInt)),
-    [1, seqLen]
+    [1, seqLen],
   );
 
   const outputs = await session.run({
@@ -208,25 +199,38 @@ async function predictTokenLabels(inputIds, attentionMask, wordIds) {
 
   const logitsLabels = outputs.logits_labels.data;
   const logitsD = outputs.logits_d.data;
-  const numLabels = vocab.num_labels - 1;
+  const hasTypes = outputs.logits_t !== undefined;
+  const logitsT = hasTypes ? outputs.logits_t.data : null;
+
+  const numLabels = vocab.num_labels - 1;   // projection excludes <PAD>
   const dNumLabels = vocab.d_num_labels - 1;
+  const tNumLabels = hasTypes ? vocab.t_num_labels - 1 : 0;
+
   const keepIdx = vocab.label2id[vocab.keep_label];
   const incorIdx = vocab.d_label2id[vocab.incorrect_label];
 
-  // Detection: compute max error probability (sentence-level)
   const wordMasks = buildWordMasks(wordIds);
+
+  // ── Detection: max P(INCORRECT) across first-subwords (sentence gate) ──
   let maxErrorProb = 0;
+  const wordDetections = []; // { wordIdx, pIncorrect }
 
   for (let t = 0; t < seqLen; t++) {
     if (wordMasks[t] !== 1) continue;
     const { exps, sumExp } = softmax(logitsD, t * dNumLabels, dNumLabels);
     const pIncor = exps[incorIdx] / sumExp;
     if (pIncor > maxErrorProb) maxErrorProb = pIncor;
+
+    const wid = wordIds[t];
+    if (wid !== null && wid > 0) {
+      // wid=0 is $START; real words start at wid=1 → index wid-1
+      wordDetections.push({ wordIdx: wid - 1, pIncorrect: pIncor });
+    }
   }
 
   const sentenceKeepAll = maxErrorProb < MIN_ERROR_PROB;
 
-  // Label prediction: softmax + keep_confidence + argmax
+  // ── Edit labels: softmax + keep_confidence + detection gate ──
   const predLabelIds = new Int32Array(seqLen);
 
   for (let t = 0; t < seqLen; t++) {
@@ -234,7 +238,6 @@ async function predictTokenLabels(inputIds, attentionMask, wordIds) {
       predLabelIds[t] = keepIdx;
       continue;
     }
-
     const { exps, sumExp } = softmax(logitsLabels, t * numLabels, numLabels);
     const probs = new Float32Array(numLabels);
     for (let l = 0; l < numLabels; l++) probs[l] = exps[l] / sumExp;
@@ -261,58 +264,29 @@ async function predictTokenLabels(inputIds, attentionMask, wordIds) {
     predLabelIds[t] = bestLabel;
   }
 
-  return predLabelIds;
-}
-
-// ── Detection-only prediction ──────────────────────
-
-/**
- * Run a detection-only forward pass — returns per-word P(INCORRECT).
- * Lighter than predictTokenLabels: skips the label softmax over ~4500
- * classes. Used by detectGrammar() for the input heatmap.
- */
-async function predictDetection(inputIds, attentionMask, wordIds) {
-  const seqLen = inputIds.length;
-
-  const inputIdsTensor = new Tensor(
-    'int64',
-    BigInt64Array.from(inputIds.map(BigInt)),
-    [1, seqLen]
-  );
-  const attentionMaskTensor = new Tensor(
-    'int64',
-    BigInt64Array.from(attentionMask.map(BigInt)),
-    [1, seqLen]
-  );
-
-  const outputs = await session.run({
-    input_ids: inputIdsTensor,
-    attention_mask: attentionMaskTensor,
-  });
-
-  const logitsD = outputs.logits_d.data;
-  const dNumLabels = vocab.d_num_labels - 1;
-  const incorIdx = vocab.d_label2id[vocab.incorrect_label];
-
-  // Compute P(INCORRECT) for the first subword of each word
-  const wordMasks = buildWordMasks(wordIds);
-  const wordDetections = [];
-
-  for (let t = 0; t < seqLen; t++) {
-    if (wordMasks[t] !== 1) continue;
-    const { exps, sumExp } = softmax(logitsD, t * dNumLabels, dNumLabels);
-    const pIncor = exps[incorIdx] / sumExp;
-
-    const wid = wordIds[t];
-    if (wid !== null && wid > 0) {  // skip $START (wid=0) and special tokens
-      wordDetections.push({ wordIdx: wid - 1, pIncorrect: pIncor });
+  // ── Error types: argmax over type logits (per token) ──
+  // argmax(logits) == argmax(softmax(logits)), so no need to normalize.
+  // Only the first-subword value per word is used (see alignWordInfo).
+  const predTypeIds = new Int32Array(seqLen);
+  if (hasTypes) {
+    for (let t = 0; t < seqLen; t++) {
+      let bestId = 0;
+      let bestLogit = -Infinity;
+      for (let l = 0; l < tNumLabels; l++) {
+        const v = logitsT[t * tNumLabels + l];
+        if (v > bestLogit) {
+          bestLogit = v;
+          bestId = l;
+        }
+      }
+      predTypeIds[t] = bestId;
     }
   }
 
-  return wordDetections;
+  return { predLabelIds, predTypeIds, wordDetections };
 }
 
-// ── Align token labels to words ─────────────────────
+// ── Align labels to words ───────────────────────────
 
 function alignToWords(predLabelIds, wordIds) {
   const wordLabels = [];
@@ -343,6 +317,46 @@ function alignToWords(predLabelIds, wordIds) {
   return { wordLabels, hasCorrections };
 }
 
+// ── Align types + detection to original word tokens ─
+//
+// Returns one entry per real input word (skipping $START), each carrying
+// the error type and P(INCORRECT) from the first subword of that word.
+// Offsets point into the ORIGINAL input text (not the punct-tokenized
+// string), so they line up with diffWord() output and the editor.
+
+function alignWordInfo(predTypeIds, wordDetections, wordIds, wordTokens) {
+  const detMap = new Map();
+  for (const d of wordDetections) detMap.set(d.wordIdx, d.pIncorrect);
+
+  const result = [];
+  let prevWordId = null;
+
+  for (let t = 0; t < wordIds.length; t++) {
+    const wid = wordIds[t];
+    if (wid === null) continue;
+    if (wid === prevWordId) continue;
+    prevWordId = wid;
+    if (wid === 0) continue; // $START
+
+    const idx = wid - 1; // real-word index into wordTokens
+    if (idx >= wordTokens.length) continue;
+
+    const typeId = predTypeIds[t];
+    const type = vocab.t_id2label ? (vocab.t_id2label[String(typeId)] || 'none') : 'none';
+    const wt = wordTokens[idx];
+
+    result.push({
+      start: wt.start,
+      end: wt.end,
+      wordIdx: idx,
+      type,
+      pIncorrect: detMap.get(idx) ?? 0,
+    });
+  }
+
+  return result;
+}
+
 // ── Apply edits ─────────────────────────────────────
 
 function applyEdits(words, labels) {
@@ -370,69 +384,107 @@ function applyEdits(words, labels) {
   let result = edited.join(' ');
   result = result.replace(/ \$DELETE\b/g, '').replace(/\$DELETE /g, '').replace(/\$DELETE/g, '');
   result = result.replace(/\$START /g, '').replace(/\$START/g, '');
-  return result.split(/\s+/).filter(w => w.length > 0);
+  return result.split(/\s+/).filter((w) => w.length > 0);
 }
 
-// ── Punctuation tokenization ────────────────────────
+// ── Punctuation tokenization (offset-preserving) ────
+//
+// Splits punctuation from words exactly as the training data did, but
+// records each token's char span in the ORIGINAL text. This keeps type
+// offsets aligned to the source the editor/diff operate on.
 
-function tokenizePunctuation(text) {
-  return text.replace(PUNCT_RE, ' $1 ').replace(/\s+/g, ' ').trim();
+function tokenizeWords(text) {
+  const tokens = [];
+  const wsRe = /\S+/g;
+  let m;
+  while ((m = wsRe.exec(text)) !== null) {
+    const chunk = m[0];
+    const base = m.index;
+    const punctRe = /([.,;:!?()«»"'\u2013\u2014])/g;
+    let last = 0;
+    let pm;
+    while ((pm = punctRe.exec(chunk)) !== null) {
+      if (pm.index > last) {
+        tokens.push({ word: chunk.slice(last, pm.index), start: base + last, end: base + pm.index });
+      }
+      tokens.push({ word: pm[0], start: base + pm.index, end: base + pm.index + 1 });
+      last = pm.index + 1;
+    }
+    if (last < chunk.length) {
+      tokens.push({ word: chunk.slice(last), start: base + last, end: base + chunk.length });
+    }
+  }
+  return tokens;
 }
 
 function detokenizePunctuation(text) {
-  return text.replace(/\s+([.,;:!?()«»"'\-\u2013\u2014])/g, '$1');
+  return text.replace(/\s+([.,;:!?()«»"'\u2013\u2014])/g, '$1');
 }
 
 // ── Public API ──────────────────────────────────────
 
 /**
- * Correct grammar errors in text using GECToR.
+ * Correct grammar and return per-word error info.
  *
- * @param {string} text  input text (may contain grammar errors)
- * @returns {Promise<{corrected: string, changed: boolean}>}
- *   corrected text and whether any changes were made.
- *   If model loading failed, returns original text unchanged.
+ * @param {string} text — input text
+ * @returns {Promise<{corrected: string, wordTypes: Array<{start, end, type, pIncorrect}>}>}
+ *   `corrected` — fully corrected text (after up to MAX_ITERATIONS passes).
+ *   `wordTypes` — per-original-word error type + detection, aligned to
+ *     `text` char offsets. Types come from iteration 0 (original words).
+ *   If model loading failed, returns { corrected: text, wordTypes: [] }.
  */
 export async function correctGrammar(text) {
   if (!isGectorReady()) {
     await initGector();
-    if (!isGectorReady()) return { corrected: text, changed: false };
+    if (!isGectorReady()) return { corrected: text, wordTypes: [] };
   }
 
   const maxLen = vocab.max_length || 128;
-  let currentText = tokenizePunctuation(text);
+  const wordTokens = tokenizeWords(text);
+  if (wordTokens.length === 0) return { corrected: text, wordTypes: [] };
 
-  for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    const words = ['$START', ...currentText.split(/\s+/)];
+  const words = ['$START', ...wordTokens.map((w) => w.word)];
+  const { inputIds, wordIds } = tokenizeWithWordIds(words, maxLen);
+  const attentionMask = new Array(inputIds.length).fill(1);
 
-    const { inputIds, wordIds } = tokenizeWithWordIds(words, maxLen);
-    const attentionMask = new Array(inputIds.length).fill(1);
+  // ── Iteration 0: labels + types + detection on original words ──
+  const { predLabelIds, predTypeIds, wordDetections } = await predictAll(
+    inputIds, attentionMask, wordIds,
+  );
 
-    const predLabelIds = await predictTokenLabels(inputIds, attentionMask, wordIds);
-    const { wordLabels, hasCorrections } = alignToWords(predLabelIds, wordIds);
+  // Types + detection aligned to original-text offsets (captured once).
+  const wordTypes = alignWordInfo(predTypeIds, wordDetections, wordIds, wordTokens);
 
-    if (!hasCorrections) break;
-
-    const newWords = applyEdits(words, wordLabels);
-    currentText = newWords.join(' ');
+  // ── Iterative refinement of the corrected text ──
+  const { wordLabels, hasCorrections } = alignToWords(predLabelIds, wordIds);
+  let currentWords;
+  if (!hasCorrections) {
+    currentWords = wordTokens.map((w) => w.word);
+  } else {
+    currentWords = applyEdits(words, wordLabels);
+    for (let iter = 1; iter < MAX_ITERATIONS; iter++) {
+      const w = ['$START', ...currentWords];
+      const { inputIds: ii, wordIds: wi } = tokenizeWithWordIds(w, maxLen);
+      const mask = new Array(ii.length).fill(1);
+      const { predLabelIds: pl } = await predictAll(ii, mask, wi);
+      const { wordLabels: wl, hasCorrections: hc } = alignToWords(pl, wi);
+      if (!hc) break;
+      currentWords = applyEdits(w, wl);
+    }
   }
 
-  const corrected = detokenizePunctuation(currentText);
-  return { corrected, changed: corrected !== text };
+  const corrected = detokenizePunctuation(currentWords.join(' '));
+  return { corrected, wordTypes };
 }
 
 /**
- * Detect grammar errors in text using GECToR's detect head.
+ * Detect grammar errors without applying corrections (heatmap).
  *
- * Single forward pass — returns per-word P(INCORRECT) scores aligned
- * to character positions in the original text. Does NOT apply corrections.
+ * Single forward pass — returns per-word P(INCORRECT) + error type,
+ * aligned to character positions in the original text.
  *
- * Powers the input heatmap: highlights words the model suspects are
- * wrong, even before correction is applied.
- *
- * @param {string} text  input text
- * @returns {Promise<{detections: Array<{word, pIncorrect, start, end}>}>}
- *   detections sorted by position. Empty if model not available.
+ * @param {string} text
+ * @returns {Promise<{detections: Array<{word, start, end, pIncorrect, type}>}>}
  */
 export async function detectGrammar(text) {
   if (!isGectorReady()) {
@@ -442,37 +494,44 @@ export async function detectGrammar(text) {
 
   const maxLen = vocab.max_length || 128;
 
-  // Tokenize input into words with character positions.
-  // Whitespace splitting — GECToR handles subword tokenization internally.
   const wordTokens = [];
   const re = /\S+/g;
   let match;
   while ((match = re.exec(text)) !== null) {
-    wordTokens.push({
-      word: match[0],
-      start: match.index,
-      end: match.index + match[0].length,
-    });
+    wordTokens.push({ word: match[0], start: match.index, end: match.index + match[0].length });
   }
-
   if (wordTokens.length === 0) return { detections: [] };
 
-  // Prepare GECToR input (prepend $START)
-  const words = ['$START', ...wordTokens.map(w => w.word)];
+  const words = ['$START', ...wordTokens.map((w) => w.word)];
   const { inputIds, wordIds } = tokenizeWithWordIds(words, maxLen);
   const attentionMask = new Array(inputIds.length).fill(1);
 
-  // Run detection-only forward pass
-  const wordDetections = await predictDetection(inputIds, attentionMask, wordIds);
+  const { predTypeIds, wordDetections } = await predictAll(inputIds, attentionMask, wordIds);
 
-  // Map detection scores to original text positions
+  const detMap = new Map();
+  for (const d of wordDetections) detMap.set(d.wordIdx, d.pIncorrect);
+
+  // Map type IDs to word indices (first subword per word)
+  const typeByWordIdx = new Map();
+  let prevWordId = null;
+  for (let t = 0; t < wordIds.length; t++) {
+    const wid = wordIds[t];
+    if (wid === null || wid === prevWordId) continue;
+    prevWordId = wid;
+    if (wid === 0) continue;
+    const typeId = predTypeIds[t];
+    const type = vocab.t_id2label ? (vocab.t_id2label[String(typeId)] || 'none') : 'none';
+    typeByWordIdx.set(wid - 1, type);
+  }
+
   const detections = wordDetections
-    .filter(d => d.wordIdx < wordTokens.length)
-    .map(d => ({
+    .filter((d) => d.wordIdx < wordTokens.length)
+    .map((d) => ({
       word: wordTokens[d.wordIdx].word,
       pIncorrect: d.pIncorrect,
       start: wordTokens[d.wordIdx].start,
       end: wordTokens[d.wordIdx].end,
+      type: typeByWordIdx.get(d.wordIdx) || 'none',
     }));
 
   return { detections };

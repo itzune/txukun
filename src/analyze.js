@@ -1,73 +1,59 @@
 /**
- * Txukun — Analysis bridge
+ * Txukun — Analysis bridge (single-model architecture)
  *
- * Runs the existing detection models and produces a unified list of
- * suggestion errors in the shape the editor / suggestions panel expect:
+ * Runs the GECToR v2-mt model (one forward pass per iteration, up to 5)
+ * and produces a typed list of suggestion errors for the editor / panel:
  *
- *   { id, from, to, original, suggestion, category, title, status }
+ *   { id, from, to, original, suggestion, category, title, status, confidence }
  *
- * category: 'grammar' | 'spelling' | 'cappunct'
+ * `category` holds the model's error-type label (one of: morphology,
+ * word_level, zalantza, calque, spelling, punctuation, capitalization,
+ * proper_noun). This replaces the old 3-bucket grammar/spelling/cappunct
+ * scheme and the separate MarianMT / Hunspell / BERTeus / rule-engine
+ * pipeline — all of those categories are now classified by the single
+ * model's type head.
  *
- * All models run on PLAIN TEXT (markdown stripped) so they never see
- * syntax markers like #, **, [], etc. Error offsets are mapped back to
- * raw-markdown positions for the editor. Errors are sorted by position
- * and de-overlapped (earliest, then longest span wins).
+ * Flow:
+ *   1. stripMarkdown(md) → plain text + offset map
+ *   2. correctGrammar(plain) → { corrected, wordTypes }
+ *      wordTypes: per-original-word { start, end, type, pIncorrect }
+ *      (types from iteration 0, aligned to original char offsets)
+ *   3. diffWords(plain, corrected) → per-span changes
+ *   4. for each change, look up the source word's type by offset overlap
+ *   5. map offsets back to markdown, build context, dedupe overlaps
+ *
+ * The model runs on PLAIN TEXT (markdown stripped) because it was trained
+ * on plain text. Error offsets are mapped back to raw-markdown positions
+ * for the editor decorations.
  */
 
-// ── Confidence thresholds ─────────────────────────────────────────
+import { correctGrammar, detectGrammar, isGectorReady, isGectorFailed, initGector } from './gector.js';
+import { diffWords } from './core/diff.js';
+
+// ── Error-type → Basque card title ─────────────────────────────────
 //
-// Per-model minimum confidence for a correction to be shown.
-// Errors below the threshold are silently suppressed.
-//
-// These thresholds were calibrated via grid search on the 220-case
-// benchmark (txukun-cli: tests/gec-benchmark/confidence_per_model.py).
-//
-// cappunct was lowered from 1.00 to 0.80: the previous value required a
-// 100% LCS match rate (perfect alignment), which dropped ALL cap-punct
-// corrections for any text where MarianMT changed even one token beyond
-// pure case/punct. With per-segment confidence (segmentRates), 0.80
-// filters out hallucinated segments while keeping good corrections.
-//
-// These values were tuned on the 220-case evaluation dataset
-// (txukun-cli: tests/gec-benchmark/eval_dataset.json) via grid search
-// (txukun-cli: tests/gec-benchmark/confidence_per_model.py).
-//
-// Result: 22.7% → 38.6% accuracy (+15.9% absolute), cutting
-// over-corrections from 139 → 66 and false positives from 12 → 1.
-//
-// Confidence source per model:
-//   grammar  → GECToR P(INCORRECT) from detection head (0.0–1.0)
-//   spelling → BERTeus cosine similarity, normalized to 0–1
-//   cappunct → MarianMT LCS match rate (fraction of input
-//              tokens that survived alignment; 1.0 = no word
-//              substitution, only case/punctuation changes)
-//
-// ⚠️  REVIEW THESE VALUES if models are updated or retrained.
-//     Re-run: txukun-cli tests/gec-benchmark/run_eval.py
-//             + confidence_per_model.py
-const CONFIDENCE_THRESHOLDS = {
-  grammar: 0.05,
-  spelling: 0.50,
-  cappunct: 0.80,
+// The model's 8 non-`none` types, plus a fallback for corrections whose
+// type the head classified as `none` (a type-head miss — the label head
+// made a correction but the type head wasn't confident; default to the
+// most common correction category).
+const TYPE_TITLES = {
+  morphology: 'Gramatika',
+  word_level: 'Hitz okerra',
+  zalantza: 'Zalantza-hitza',
+  calque: 'Kalkoa',
+  spelling: 'Ortografia',
+  punctuation: 'Puntuazioa',
+  capitalization: 'Maiuskula',
+  proper_noun: 'Izen berezia',
+  none: 'Gramatika',
 };
-
-/**
- * Suppress errors whose confidence is below the per-category threshold.
- * Errors with confidence=null are always kept (can't evaluate).
- */
-function filterByConfidence(errors) {
-  return errors.filter((e) => {
-    const threshold = CONFIDENCE_THRESHOLDS[e.category] ?? 0;
-    return e.confidence === null || e.confidence === undefined || e.confidence >= threshold;
-  });
-}
 
 // ── Markdown stripping with offset mapping ──────────────────────────
 //
-// Idaztian's getContent() returns raw markdown source. All three models
-// (MarianMT, GECToR, Hunspell) were trained on plain text, so we strip
-// markdown syntax before passing text to them, then map the resulting
-// error offsets back to markdown positions for the editor decorations.
+// Idaztian's getContent() returns raw markdown source. The model was
+// trained on plain text, so we strip markdown syntax before passing text
+// to it, then map the resulting error offsets back to markdown positions
+// for the editor decorations.
 
 /**
  * Strip markdown syntax markers from text, returning plain text + a
@@ -76,21 +62,14 @@ function filterByConfidence(errors) {
  * Strips: headings, bold, italic, strikethrough, inline code, links,
  * images, blockquotes, list markers, horizontal rules, code fences.
  *
- * Also returns `headingRanges`: plain-text [start, end] offsets for each
- * heading line's content, so callers can suppress punctuation hints
- * inside headings (which shouldn't get trailing dots).
- *
  * @param {string} md - Raw markdown source
- * @returns {{ text: string, map: number[], headingRanges: Array<[number, number]> }}
+ * @returns {{ text: string, map: number[] }}
  */
 function stripMarkdown(md) {
   let plain = '';
   const map = [];
   let i = 0;
   let inCodeBlock = false;
-  let inHeading = false;
-  let headingStart = 0;
-  const headingRanges = [];
   const len = md.length;
 
   while (i < len) {
@@ -119,11 +98,7 @@ function stripMarkdown(md) {
 
       // Heading markers (# to ######)
       const h = md.slice(j).match(/^#{1,6}\s+/);
-      if (h) {
-        j += h[0].length;
-        inHeading = true;
-        headingStart = plain.length;
-      }
+      if (h) j += h[0].length;
 
       // List markers (- * + or 1.)
       const l = md.slice(j).match(/^([-*+]\s+|\d+\.\s+)/);
@@ -232,32 +207,20 @@ function stripMarkdown(md) {
       }
     }
 
-    // ── ASCII double quotes — strip (GECToR's SentencePiece tokenizer
-    //    splits them into standalone tokens, which breaks the LCS diff).
-    //    Positions are NOT added to the map, so offsets skip over quotes
-    //    and land on the correct characters in the original markdown.
+    // ── ASCII double quotes — strip (the BPE tokenizer splits them into
+    //    standalone tokens, which breaks the word-level LCS diff).
     if (md[i] === '"') {
       i++;
       continue;
     }
 
     // ── Regular character ──
-    // Record heading range at end of heading line (before the newline).
-    if (md[i] === '\n' && inHeading) {
-      headingRanges.push([headingStart, plain.length]);
-      inHeading = false;
-    }
     plain += md[i];
     map.push(i);
     i++;
   }
 
-  // Heading at EOF (no trailing newline)
-  if (inHeading) {
-    headingRanges.push([headingStart, plain.length]);
-  }
-
-  return { text: plain, map, headingRanges };
+  return { text: plain, map };
 }
 
 /**
@@ -282,10 +245,6 @@ function mapOffset(plainOffset, map, isEnd = false) {
  * Build a leading-context snippet for a card: a few words before the
  * error, bounded by the current paragraph (newline). Returns empty
  * string if the error is at the start of its paragraph.
- *
- * @param {string} plainText - stripped plain text
- * @param {number} from - error start offset (in plain text)
- * @returns {string}
  */
 function buildContext(plainText, from) {
   const paraStart = plainText.lastIndexOf('\n', from - 1) + 1;
@@ -295,394 +254,128 @@ function buildContext(plainText, from) {
   return ctx.trimEnd();
 }
 
-import { correctCapPunct, isModelReady, isSpellReady } from './models.js';
-import { checkSpelling, getBestCorrection, checkWord } from './spell.js';
-import { correctGrammar, detectGrammar, isGectorReady, isGectorFailed, initGector } from './gector.js';
-import { diffWords, isCasePunctOnly } from './core/diff.js';
-import { runRules } from './core/engine.js';
-import { allRules } from './core/rules/index.js';
-
 let errCounter = 0;
 const nextId = () => `e${++errCounter}`;
 
 /**
- * Analyze the full text and return an array of error objects.
+ * Analyze the full text and return an array of typed error objects.
  *
- * Markdown syntax is stripped before passing to models (they were
+ * Markdown syntax is stripped before passing to the model (it was
  * trained on plain text). Error offsets are mapped back to raw-markdown
  * positions so editor decorations land on the right characters.
  *
  * @param {string} mdText - raw markdown from the editor
+ * @param {(p:{stage:string})=>void} [onProgress] - status callback
+ * @param {(batch:Array)=>void} [onBatch] - incremental card stream
  * @returns {Promise<Array>}
  */
 export async function analyzeText(mdText, onProgress, onBatch) {
   if (!mdText || !mdText.trim()) return [];
 
-  // Strip markdown → plain text + offset map + heading ranges
-  const { text: plainText, map, headingRanges } = stripMarkdown(mdText);
+  const { text: plainText, map } = stripMarkdown(mdText);
   if (!plainText.trim()) return [];
 
-  // Helper: finalize a batch of plain-text errors (context + offset map)
-  // and stream them to the UI immediately.
-  const emit = (errors) => {
-    if (!errors || errors.length === 0) return;
-    for (const e of errors) e.context = buildContext(plainText, e.from);
-    const mapped = errors.map((e) => ({
-      ...e,
-      from: mapOffset(e.from, map, false),
-      to: mapOffset(e.to, map, true),
-    }));
-    onBatch?.(mapped);
-  };
-
-  // Yield to the browser's event loop so DOM changes (cards painted, 
-  // progress text updated) are rendered before ONNX WASM inference
-  // blocks the main thread for several seconds per segment.
-  const yieldToBrowser = () => new Promise((r) => setTimeout(r, 0));
-
-  // ── Batch 1 (instant, <10ms): rule engine only ("Txukun Lite") ──
-  // Run rules directly on the plain text so the user sees zalantza,
-  // calque, cap-punct-rule suggestions immediately — before any neural
-  // model runs. These may partially overlap later model output; the
-  // final merge/dedupe at the end reconciles.
-  const ruleErrors = detectRuleErrors(plainText, headingRanges);
-  emit(ruleErrors);
-  await yieldToBrowser();
-
-  // ── Fire Hunspell in parallel (runs in a Web Worker — independent ──
-  // of the ONNX WASM runtime, so it doesn't compete with cap-punct/grammar).
-  onProgress?.({ stage: 'spelling' });
-  const spellPromise = detectSpellingErrors(plainText);
-
-  // ── Grammar (ONNX main thread, non-blocking) ──
-  const grammarErrors = await detectGrammarErrors(plainText, onProgress);
-  emit(grammarErrors);
-  await yieldToBrowser();
-
-  // ── Cap-punct (ONNX main thread — after grammar, since both use ──
-  // the WASM runtime which serializes sessions).
-  onProgress?.({ stage: 'cappunct' });
-  await yieldToBrowser();
-  let capPunctErrors = await detectCapPunctErrors(plainText, headingRanges);
-  emit(capPunctErrors);
-  await yieldToBrowser();
-
-  // ── Await spelling (was running in parallel — likely done by now) ──
-  const spellingErrors = await spellPromise;
-  emit(spellingErrors);
-
-  // Merge overlapping spelling/grammar + cap-punct errors: when a
-  // correction and a cap-punct case change touch the same word, apply
-  // the capitalization to the correction suggestion and drop the
-  // redundant cap-punct hint. The user sees a single card.
-  //   spelling:  laister→laster, cap-punct: laister→Laister  →  laister→Laster
-  //   grammar:   ama→amak,      cap-punct: ama→Ama           →  ama→Amak
-  capPunctErrors = mergeCapPunct([...spellingErrors, ...grammarErrors], capPunctErrors);
-
-  // Build context snippets (in plain text, paragraph-bounded) BEFORE
-  // mapping offsets to markdown. This keeps context clean (no markdown
-  // markers) and prevents bleeding across paragraph boundaries.
-  const allPlain = [...grammarErrors, ...spellingErrors, ...capPunctErrors];
-  for (const e of allPlain) {
-    e.context = buildContext(plainText, e.from);
+  // ── Run the single GECToR v2-mt model ──
+  // If the model isn't loaded yet (it loads in the background after
+  // startup), skip this run instead of freezing the UI for 50–120s.
+  // The background load continues; the next Aztertu click will have it.
+  if (!isGectorReady()) {
+    onProgress?.({ stage: 'loading' });
+    if (!isGectorFailed()) initGector(); // idempotent — kicks off background load
+    return [];
   }
 
-  // Map offsets from plain text → markdown
-  let all = allPlain.map((e) => ({
+  onProgress?.({ stage: 'analyzing' });
+
+  let corrected, wordTypes;
+  try {
+    ({ corrected, wordTypes } = await correctGrammar(plainText));
+  } catch (err) {
+    console.warn('[analyze] GECToR correction failed:', err);
+    return [];
+  }
+
+  if (!corrected || corrected === plainText) return [];
+
+  // ── Diff original → corrected to extract per-span changes ──
+  const changes = diffWords(plainText, corrected);
+
+  // Yield so the progress indicator repaints before we build the batch.
+  await new Promise((r) => setTimeout(r, 0));
+
+  const errors = [];
+  for (const ch of changes) {
+    // replace: word(s) changed (the dominant case)
+    // delete:  word removed (GECToR $DELETE)
+    // insert:  word added (GECToR $APPEND) — zero-width span
+    if (ch.type !== 'replace' && ch.type !== 'delete') continue;
+
+    // Look up the source word's error type + detection confidence by
+    // char-offset overlap with the per-word wordTypes array.
+    const wt = findWordType(ch.fromOffset, ch.toOffset, wordTypes);
+
+    // If the type head said 'none' but the label head made a correction,
+    // default to 'morphology' (the most common correction category) so
+    // the card gets a valid CSS class and a meaningful title.
+    const category = wt.type === 'none' ? 'morphology' : wt.type;
+
+    errors.push({
+      id: nextId(),
+      from: ch.fromOffset,
+      to: ch.toOffset,
+      original: ch.fromText,
+      suggestion: ch.toText,
+      category,
+      title: TYPE_TITLES[category] || 'Gramatika',
+      status: 'pending',
+      confidence: wt.pIncorrect,
+    });
+  }
+
+  if (errors.length === 0) return [];
+
+  // Build context snippets (plain text, paragraph-bounded) BEFORE
+  // mapping offsets to markdown — keeps context clean (no markers).
+  for (const e of errors) e.context = buildContext(plainText, e.from);
+
+  // Stream the batch to the UI immediately.
+  const mapped = errors.map((e) => ({
     ...e,
     from: mapOffset(e.from, map, false),
     to: mapOffset(e.to, map, true),
   }));
+  onBatch?.(mapped);
 
   // Sort by position; longer spans first when tied
-  all.sort((a, b) => a.from - b.from || (b.to - b.from) - (a.to - a.from));
+  mapped.sort((a, b) => a.from - b.from || b.to - b.from - (a.to - a.from));
   // Remove overlaps (keep earliest, then longest)
-  all = dedupeOverlaps(all);
-  // Suppress low-confidence corrections (per-model thresholds)
-  all = filterByConfidence(all);
-  return all;
-}
-
-// ── Grammar (GECToR) ────────────────────────────────────────────────
-//
-// GECToR's correctGrammar() returns the full corrected text. We diff it
-// against the original (word-level LCS) to extract per-span changes,
-// each becoming a grammar suggestion with original character offsets.
-
-async function detectGrammarErrors(text, onProgress) {
-  const errors = [];
-  try {
-    // Don't block on GECToR download. If it isn't ready yet (it loads in
-    // the background after startup), skip grammar this run instead of
-    // freezing the UI for 50-120s. The background load continues; the
-    // next Aztertu click will have it ready.
-    if (!isGectorReady()) {
-      onProgress?.({ stage: 'grammar', skipped: true });
-      if (!isGectorFailed()) initGector(); // ensure background load (idempotent)
-      return errors;
-    }
-    onProgress?.({ stage: 'grammar', skipped: false });
-    const { corrected } = await correctGrammar(text);
-    if (!corrected || corrected === text) return errors;
-
-    // Get per-word P(INCORRECT) from detection head for confidence
-    let detections = [];
-    try {
-      const det = await detectGrammar(text);
-      detections = det.detections || [];
-    } catch (e) { /* detection optional */ }
-
-    const changes = diffWords(text, corrected);
-    for (const ch of changes) {
-      if (ch.type !== 'replace') continue; // insertions/deletions rare in GECToR-eus
-      // Find detection confidence for this word
-      let conf = null;
-      for (const d of detections) {
-        if (d.start === ch.fromOffset && d.end === ch.toOffset) {
-          conf = d.pIncorrect;
-          break;
-        }
-      }
-      errors.push({
-        id: nextId(),
-        from: ch.fromOffset,
-        to: ch.toOffset,
-        original: ch.fromText,
-        suggestion: ch.toText,
-        category: 'grammar',
-        title: grammarTitle(ch.fromText, ch.toText),
-        status: 'pending',
-        confidence: conf,
-      });
-    }
-  } catch (err) {
-    console.warn('[analyze] grammar detection failed:', err);
-  }
-  return errors;
-}
-
-function grammarTitle(original, suggestion) {
-  if (suggestion.split(/\s+/).length > original.split(/\s+/).length) return 'Hitza gehitu';
-  if (suggestion.split(/\s+/).length < original.split(/\s+/).length) return 'Hitza kendu';
-  if (suggestion.toLowerCase() === original.toLowerCase()) return 'Maiuskula';
-  return 'Gramatika';
-}
-
-// ── Spelling (Hunspell + BERTeus re-rank) ────────────────────────────
-
-async function detectSpellingErrors(text) {
-  const errors = [];
-  try {
-    if (!isSpellReady()) return errors;
-    const spellErrors = await checkSpelling(text);
-    if (!Array.isArray(spellErrors)) return errors;
-
-    for (const err of spellErrors) {
-      if (!err.suggestions || err.suggestions.length === 0) continue;
-      // Proper-noun guard: if the capitalized form of this word is a
-      // valid Hunspell word, it's likely a proper noun written in
-      // lowercase (e.g. 'araba', 'nafarroa'). Skip it — the cap-punct
-      // model should handle capitalization, and the spelling model
-      // would only corrupt it (e.g. 'araba'→'graba').
-      const original = text.slice(err.start, err.end);
-      const cap = original[0].toUpperCase() + original.slice(1);
-      if (original[0] === original[0].toLowerCase() && await checkWord(cap)) {
-        continue;
-      }
-      // Use the shared two-tier re-ranking (Tier 1 freq + Tier 2 BERTeus)
-      // instead of blindly taking Hunspell's suggestions[0].
-      const best = await getBestCorrection(text, err);
-      if (!best) continue;
-      const suggestion = best.word;
-      if (suggestion === original) continue;
-      // BERTeus cosine similarity as confidence (normalize to 0–1)
-      let conf = null;
-      if (best.bertScore !== undefined && best.bertScore !== null) {
-        conf = (best.bertScore + 1.0) / 2.0;
-      }
-      errors.push({
-        id: nextId(),
-        from: err.start,
-        to: err.end,
-        original,
-        suggestion,
-        category: 'spelling',
-        title: 'Ortografia',
-        status: 'pending',
-        confidence: conf,
-      });
-    }
-  } catch (err) {
-    console.warn('[analyze] spelling detection failed:', err);
-  }
-  return errors;
-}
-
-// ── Capitalization & punctuation (MarianMT) ─────────────────────────
-//
-// MarianMT rewrites the whole text with restored caps/punctuation. We
-// diff its output against the input; only case/punctuation-only changes
-// (not word substitutions, which constrainCapPunct already filtered)
-// become 'cappunct' suggestions.
-
-async function detectCapPunctErrors(text, headingRanges = []) {
-  const errors = [];
-  try {
-    // NOTE: do NOT bail when the model isn't loaded — correctCapPunct() takes
-    // a rules-only "Txukun Lite" path (no model inference) so basic cap+punct+
-    // comma fixes still surface as cards before/without the neural model.
-    const { corrected, matchRate, segmentRates } = await correctCapPunct(text);
-    if (!corrected || corrected === text) return errors;
-
-    const changes = diffWords(text, corrected);
-    for (const ch of changes) {
-      if (ch.type !== 'replace') continue;
-      if (!isCasePunctOnly(ch.fromText, ch.toText)) continue;
-      // Ignore punctuation hints inside heading lines — headings
-      // shouldn't get trailing dots or other punctuation additions.
-      // Pure capitalization hints (e.g. "nire" → "Nire") are kept.
-      if (
-        isInHeading(ch.fromOffset, headingRanges) &&
-        ch.fromText.toLowerCase() !== ch.toText.toLowerCase()
-      )
-        continue;
-      // Assign per-segment match rate as confidence instead of the
-      // global average. This way, a hallucinated segment (low match
-      // rate) doesn't drag down confidence for corrections in other
-      // segments that matched well.
-      let segRate = matchRate; // fallback to global average
-      for (const sr of segmentRates) {
-        if (ch.fromOffset >= sr.start && ch.fromOffset < sr.end) {
-          segRate = sr.rate;
-          break;
-        }
-      }
-      errors.push({
-        id: nextId(),
-        from: ch.fromOffset,
-        to: ch.toOffset,
-        original: ch.fromText,
-        suggestion: ch.toText,
-        category: 'cappunct',
-        title: capPunctTitle(ch.fromText, ch.toText),
-        status: 'pending',
-        confidence: segRate,
-      });
-    }
-  } catch (err) {
-    console.warn('[analyze] cap-punct detection failed:', err);
-  }
-  return errors;
-}
-
-function capPunctTitle(from, to) {
-  if (from.toLowerCase() === to.toLowerCase()) return 'Maiuskula';
-  return 'Puntuazioa';
-}
-
-// ── Rule-only instant detection ("Txukun Lite" batch) ───────────────
-//
-// Runs the deterministic rule engine directly on the plain text and
-// diffs the result — same logic as detectCapPunctErrors but WITHOUT
-// the neural model. Used to surface instant suggestions (<10ms) before
-// the MarianMT/GECToR/Hunspell models finish. The final merge/dedupe
-// at the end of analyzeText() reconciles any overlap with model output.
-function detectRuleErrors(text, headingRanges = []) {
-  try {
-    const { corrected } = runRules(text, allRules);
-    if (!corrected || corrected === text) return [];
-    const errors = [];
-    const changes = diffWords(text, corrected);
-    for (const ch of changes) {
-      if (ch.type !== 'replace') continue;
-      if (!isCasePunctOnly(ch.fromText, ch.toText)) continue;
-      if (
-        isInHeading(ch.fromOffset, headingRanges) &&
-        ch.fromText.toLowerCase() !== ch.toText.toLowerCase()
-      )
-        continue;
-      errors.push({
-        id: nextId(),
-        from: ch.fromOffset,
-        to: ch.toOffset,
-        original: ch.fromText,
-        suggestion: ch.toText,
-        category: 'cappunct',
-        title: capPunctTitle(ch.fromText, ch.toText),
-        status: 'pending',
-        confidence: 1.0, // rules are deterministic — full confidence
-      });
-    }
-    return errors;
-  } catch (err) {
-    console.warn('[analyze] rule detection failed:', err);
-    return [];
-  }
-}
-
-// ── Word-level LCS diff — extracted to src/core/diff.js (P1)
-// (pure, Node-testable; see tests/core/txukun-lite.test.mjs)
-
-// ── Correction + cap-punct merge ───────────────────────────────────
-//
-// When a spelling or grammar correction and a cap-punct case change
-// overlap at the same position, merge them: apply the capitalization
-// pattern from the cap-punct hint to the correction suggestion, then
-// drop the redundant cap-punct hint.
-//   spelling: laister→laster, cap-punct: laister→Laister  →  laister→Laster
-//   grammar:  ama→amak,      cap-punct: ama→Ama           →  ama→Amak
-
-function mergeCapPunct(targetErrors, capPunctErrors) {
-  const removed = new Set();
-  for (const tg of targetErrors) {
-    for (let i = 0; i < capPunctErrors.length; i++) {
-      if (removed.has(i)) continue;
-      const cp = capPunctErrors[i];
-      // Must overlap in position
-      if (tg.from >= cp.to || cp.from >= tg.to) continue;
-      // Only merge pure case changes (no punctuation difference)
-      if (cp.original.toLowerCase() !== cp.suggestion.toLowerCase()) continue;
-      const merged = applyCasePattern(cp.original, cp.suggestion, tg.suggestion);
-      if (merged && merged !== tg.suggestion) {
-        tg.suggestion = merged;
-        removed.add(i);
-      }
-    }
-  }
-  return capPunctErrors.filter((_, i) => !removed.has(i));
+  const final = dedupeOverlaps(mapped);
+  return final;
 }
 
 /**
- * Apply the case pattern from (original→corrected) to target.
- * Currently handles first-letter capitalization (sentence-initial,
- * proper nouns) — the only case change Basque cap-punct produces.
- * @returns {string|null} target with case applied, or null if not applicable
+ * Find the wordType whose [start, end) span overlaps [from, to).
+ * Falls back to the nearest preceding word, then a generic default.
+ *
+ * @param {number} from - change start offset (plain text)
+ * @param {number} to - change end offset (plain text, exclusive)
+ * @param {Array<{start,end,type,pIncorrect}>} wordTypes
+ * @returns {{type:string, pIncorrect:number}}
  */
-function applyCasePattern(original, corrected, target) {
-  if (original.toLowerCase() !== corrected.toLowerCase()) return null;
-  if (
-    corrected.length > 0 &&
-    original.length > 0 &&
-    corrected[0] === corrected[0].toUpperCase() &&
-    original[0] === original[0].toLowerCase() &&
-    corrected[0].toLowerCase() === original[0].toLowerCase()
-  ) {
-    return target[0].toUpperCase() + target.slice(1);
+function findWordType(from, to, wordTypes) {
+  if (!wordTypes || wordTypes.length === 0) {
+    return { type: 'morphology', pIncorrect: 0 };
   }
-  return null;
-}
-
-/**
- * Check whether a plain-text offset falls within a heading line.
- * @param {number} offset - plain-text offset
- * @param {Array<[number, number]>} headingRanges - [start, end] ranges
- * @returns {boolean}
- */
-function isInHeading(offset, headingRanges) {
-  for (const [start, end] of headingRanges) {
-    if (offset >= start && offset < end) return true;
+  // Direct overlap
+  for (const wt of wordTypes) {
+    if (wt.start < to && from < wt.end) return wt;
   }
-  return false;
+  // Nearest preceding word (the change likely attaches to it)
+  for (let i = wordTypes.length - 1; i >= 0; i--) {
+    if (wordTypes[i].end <= from) return wordTypes[i];
+  }
+  // Nearest following word
+  return wordTypes[0];
 }
 
 // ── Overlap resolution ───────────────────────────────────────────────
@@ -698,15 +391,14 @@ function dedupeOverlaps(errors) {
   return out;
 }
 
-// ── Detection-only heatmap (GECToR detect head) ────────────────────
+// ── Detection-only heatmap ──────────────────────────────────────────
 //
-// Returns per-word P(INCORRECT) aligned to character positions. Used by
-// the editor to highlight suspect words even before the user runs a full
-// analysis (or to supplement the suggestion cards).
+// Returns per-word P(INCORRECT) + error type, aligned to character
+// positions in the original markdown. Used by the editor to highlight
+// suspect words even before the user runs a full analysis.
 
 export async function detectHeatmap(mdText) {
   try {
-    // Don't block on GECToR download — see detectGrammarErrors.
     if (!isGectorReady()) {
       if (!isGectorFailed()) initGector();
       return [];

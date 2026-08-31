@@ -28,7 +28,9 @@ const setVanishingEffect = StateEffect.define();       // { id | null }
 // State value: { errors: Error[], activeId: string|null, vanishingId: string|null }
 // Each Error: { id, from, to, original, suggestion, category, title, status }
 // status: 'pending' | 'accepted' | 'dismissed'
-// category: 'grammar' | 'spelling' | 'cappunct'
+// category: GECToR v2-mt type head label — one of:
+//   morphology | word_level | zalantza | calque | spelling |
+//   punctuation | capitalization | proper_noun
 
 const errorField = StateField.define({
   create: () => ({ errors: [], activeId: null, vanishingId: null }),

@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Txukun — Euskarazko testu zuzentzailea</title>
   <meta name="description"
-    content="Txukun — Euskarazko testuaren maiuskulak, puntuazioa, ortografia eta gramatika zuzentzen dituen tresna. Doakoa, pribatua, nabigatzailean exekutatzen da." />
+    content="Txukun — Euskarazko testuaren ortografia, puntuazioa, maiuskulak, gramatika, lexikoa, kalkoak eta zalantzak zuzentzen dituen tresna. Doakoa, pribatua, nabigatzailean exekutatzen da." />
 
   <meta property="og:title" content="Txukun — Euskarazko testu zuzentzailea" />
-  <meta property="og:description" content="Euskarazko testuaren maiuskulak, puntuazioa, ortografia eta gramatika zuzentzen ditu. Doakoa eta pribatua." />
+  <meta property="og:description" content="Euskarazko testuaren ortografia, puntuazioa, maiuskulak, gramatika, kalkoak eta zalantzak zuzentzen ditu. Doakoa eta pribatua." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://itzune.eus/txukun/" />
 
@@ -53,6 +53,9 @@
       --err-blue: #4b8ee8;
       --err-blue-soft: rgba(75, 142, 232, 0.16);
       --err-blue-line: rgba(75, 142, 232, 0.55);
+      --err-purple: #a056f0;
+      --err-purple-soft: rgba(160, 86, 240, 0.16);
+      --err-purple-line: rgba(160, 86, 240, 0.55);
       --accept-green: #30a46c;
       --accept-green-hover: #3cba7d;
 
@@ -384,7 +387,12 @@
       font-style: italic;
     }
 
-    /* ── Error decorations in editor ── */
+    /* ── Error decorations in editor ──
+       Color families (4) mapped to error types (8):
+         red:    morphology, word_level
+         amber:  zalantza, spelling
+         purple: calque
+         blue:   punctuation, capitalization, proper_noun */
     .tx-error {
       text-decoration: underline wavy var(--err-red-line);
       text-decoration-thickness: 1.5px;
@@ -393,27 +401,41 @@
       cursor: pointer;
       transition: background 0.15s;
     }
-    .tx-error--grammar {
+    /* red */
+    .tx-error--morphology, .tx-error--word_level {
       text-decoration-color: var(--err-red-line);
     }
-    .tx-error--spelling {
+    .tx-error--morphology:hover, .tx-error--word_level:hover { background: var(--err-red-soft); }
+    .tx-error--morphology.tx-error--active, .tx-error--word_level.tx-error--active {
+      background: var(--err-red-soft) !important; box-shadow: 0 0 0 2px var(--err-red-line);
+    }
+    /* amber */
+    .tx-error--zalantza, .tx-error--spelling {
       text-decoration-color: var(--err-amber-line);
     }
-    .tx-error--cappunct {
+    .tx-error--zalantza:hover, .tx-error--spelling:hover { background: var(--err-amber-soft); }
+    .tx-error--zalantza.tx-error--active, .tx-error--spelling.tx-error--active {
+      background: var(--err-amber-soft) !important; box-shadow: 0 0 0 2px var(--err-amber-line);
+    }
+    /* purple */
+    .tx-error--calque {
+      text-decoration-color: var(--err-purple-line);
+    }
+    .tx-error--calque:hover { background: var(--err-purple-soft); }
+    .tx-error--calque.tx-error--active {
+      background: var(--err-purple-soft) !important; box-shadow: 0 0 0 2px var(--err-purple-line);
+    }
+    /* blue */
+    .tx-error--punctuation, .tx-error--capitalization, .tx-error--proper_noun {
       text-decoration-color: var(--err-blue-line);
     }
-    .tx-error:hover {
-      background: var(--err-red-soft);
+    .tx-error--punctuation:hover, .tx-error--capitalization:hover, .tx-error--proper_noun:hover { background: var(--err-blue-soft); }
+    .tx-error--punctuation.tx-error--active, .tx-error--capitalization.tx-error--active, .tx-error--proper_noun.tx-error--active {
+      background: var(--err-blue-soft) !important; box-shadow: 0 0 0 2px var(--err-blue-line);
     }
-    .tx-error--spelling:hover { background: var(--err-amber-soft); }
-    .tx-error--cappunct:hover { background: var(--err-blue-soft); }
-
-    .tx-error--active {
-      background: var(--err-red-soft) !important;
-      box-shadow: 0 0 0 2px var(--err-red-line);
-    }
-    .tx-error--spelling.tx-error--active { background: var(--err-amber-soft) !important; box-shadow: 0 0 0 2px var(--err-amber-line); }
-    .tx-error--cappunct.tx-error--active { background: var(--err-blue-soft) !important; box-shadow: 0 0 0 2px var(--err-blue-line); }
+    /* default hover/active (red) for any unmatched type */
+    .tx-error:hover { background: var(--err-red-soft); }
+    .tx-error--active { background: var(--err-red-soft) !important; box-shadow: 0 0 0 2px var(--err-red-line); }
 
     /* Fading-out decoration when accepted */
     .tx-error--vanishing {
@@ -553,9 +575,18 @@
     }
     .card:hover { border-color: var(--border-focus); }
     .card.active { border-color: var(--err-red-line); box-shadow: 0 0 0 1px var(--err-red-line); }
-    .card--grammar.active { border-color: var(--err-red-line); box-shadow: 0 0 0 1px var(--err-red-line); }
-    .card--spelling.active { border-color: var(--err-amber-line); box-shadow: 0 0 0 1px var(--err-amber-line); }
-    .card--cappunct.active { border-color: var(--err-blue-line); box-shadow: 0 0 0 1px var(--err-blue-line); }
+    /* red: morphology, word_level */
+    .card--morphology.active, .card--word_level.active { border-color: var(--err-red-line); box-shadow: 0 0 0 1px var(--err-red-line); }
+    .card--morphology .card__icon, .card--word_level .card__icon { background: var(--err-red-soft); color: var(--err-red); }
+    /* amber: zalantza, spelling */
+    .card--zalantza.active, .card--spelling.active { border-color: var(--err-amber-line); box-shadow: 0 0 0 1px var(--err-amber-line); }
+    .card--zalantza .card__icon, .card--spelling .card__icon { background: var(--err-amber-soft); color: var(--err-amber); }
+    /* purple: calque */
+    .card--calque.active { border-color: var(--err-purple-line); box-shadow: 0 0 0 1px var(--err-purple-line); }
+    .card--calque .card__icon { background: var(--err-purple-soft); color: var(--err-purple); }
+    /* blue: punctuation, capitalization, proper_noun */
+    .card--punctuation.active, .card--capitalization.active, .card--proper_noun.active { border-color: var(--err-blue-line); box-shadow: 0 0 0 1px var(--err-blue-line); }
+    .card--punctuation .card__icon, .card--capitalization .card__icon, .card--proper_noun .card__icon { background: var(--err-blue-soft); color: var(--err-blue); }
 
     .card__head {
       display: flex;
@@ -573,9 +604,6 @@
       border-radius: 50%;
       flex-shrink: 0;
     }
-    .card--grammar .card__icon { background: var(--err-red-soft); color: var(--err-red); }
-    .card--spelling .card__icon { background: var(--err-amber-soft); color: var(--err-amber); }
-    .card--cappunct .card__icon { background: var(--err-blue-soft); color: var(--err-blue); }
 
     .card__meta { flex: 1; min-width: 0; }
     .card__title {
@@ -964,9 +992,14 @@
         </div>
         <div class="tabs" id="tabs">
           <button class="tab active" data-cat="all">Dena <span class="tab__badge" id="badge-all">0</span></button>
-          <button class="tab" data-cat="grammar">Gramatika <span class="tab__badge" id="badge-grammar">0</span></button>
+          <button class="tab" data-cat="morphology">Gramatika <span class="tab__badge" id="badge-morphology">0</span></button>
+          <button class="tab" data-cat="word_level">Lexikoa <span class="tab__badge" id="badge-word_level">0</span></button>
+          <button class="tab" data-cat="zalantza">Zalantzak <span class="tab__badge" id="badge-zalantza">0</span></button>
+          <button class="tab" data-cat="calque">Kalkoak <span class="tab__badge" id="badge-calque">0</span></button>
           <button class="tab" data-cat="spelling">Ortografia <span class="tab__badge" id="badge-spelling">0</span></button>
-          <button class="tab" data-cat="cappunct">Maiuskulak <span class="tab__badge" id="badge-cappunct">0</span></button>
+          <button class="tab" data-cat="punctuation">Puntuazioa <span class="tab__badge" id="badge-punctuation">0</span></button>
+          <button class="tab" data-cat="capitalization">Maiuskulak <span class="tab__badge" id="badge-capitalization">0</span></button>
+          <button class="tab" data-cat="proper_noun">Izen bereziak <span class="tab__badge" id="badge-proper_noun">0</span></button>
         </div>
       </div>
       <div class="suggestions" id="suggestions">

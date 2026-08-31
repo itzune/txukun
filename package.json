@@ -1,25 +1,15 @@
 {
   "name": "txukun",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "Euskarazko testu zuzentzailea — Basque text correction tool",
+  "description": "Euskarazko testu zuzentzailea — Basque text correction tool (GECToR v2-mt, single model)",
   "homepage": "https://itzune.eus/txukun/",
   "type": "module",
   "scripts": {
-    "predev": "npm run copy-dicts",
     "dev": "vite",
-    "build": "npm run copy-dicts && vite build",
-    "postinstall": "npm run copy-dicts",
-    "copy-dicts": "mkdir -p public/dicts && cp node_modules/dictionary-eu/index.aff public/dicts/eu.aff && cp node_modules/dictionary-eu/index.dic public/dicts/eu.dic",
+    "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && gh-pages -d dist",
-    "test:cap-punct": "node tests/cap-punct/eval.mjs",
-    "test:cap-punct:check": "node tests/cap-punct/eval.mjs --check",
-    "test:core": "node tests/core/rule-engine.test.mjs && node tests/core/txukun-lite.test.mjs && node tests/core/clean-output.test.mjs && node tests/core/zalantza.test.mjs && node tests/core/zalantza-phrases.test.mjs && node tests/core/calque.test.mjs && node --test tests/core/zalantza-proper.test.mjs",
-    "test:ebe": "node tests/ebe-rules/eval.mjs",
-    "test:ebe:check": "node tests/ebe-rules/eval.mjs --check",
-    "test:spell": "node tests/gec-benchmark/eval-tier1.mjs",
-    "test": "npm run test:core && npm run test:cap-punct:check && npm run test:ebe:check && npm run test:spell"
+    "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",
@@ -31,8 +21,6 @@
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.6",
     "@huggingface/transformers": "^3.6.0",
-    "@lezer/markdown": "^1.7.2",
-    "dictionary-eu": "^4.0.0",
     "idaztian": "^1.4.1"
   },
   "devDependencies": {

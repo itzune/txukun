@@ -10,8 +10,7 @@
  * are emitted as 'replace' so capitalization fixes are not silently dropped.
  *
  * Extracted from `src/analyze.js` (P1) so the diff pipeline is unit-testable in
- * Node without importing browser-only model deps — same rationale as
- * `src/core/clean-output.js`.
+ * Node without importing browser-only model deps.
  *
  * @module txukun/core/diff
  */
